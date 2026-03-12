@@ -55,7 +55,6 @@ export function IncomingDetailModal({ open, onClose }: IncomingDetailModalProps)
                 fontSize: 12,
                 fontWeight: 600,
                 color: activeTab === tab.key ? "var(--accent)" : "var(--tm)",
-                borderBottom: activeTab === tab.key ? "2px solid var(--accent)" : "2px solid transparent",
                 background: "none",
                 border: "none",
                 borderBottom: activeTab === tab.key ? "2px solid var(--accent)" : "2px solid transparent",
