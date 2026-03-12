@@ -56,7 +56,6 @@ export function UserParentModal({ open, onClose }: UserParentModalProps) {
             <button key={i} onClick={() => setTab(i)} style={{
               padding: "9px 13px", cursor: "pointer", fontSize: 12, fontWeight: 600,
               color: tab === i ? "var(--accent)" : "var(--tm)",
-              borderBottom: tab === i ? "2px solid var(--accent)" : "2px solid transparent",
               background: "none", border: "none",
               borderBottom: tab === i ? "2px solid var(--accent)" : "2px solid transparent",
               fontFamily: "inherit", marginBottom: -1,
