@@ -1,26 +1,152 @@
 @import "tailwindcss";
 
+/* ── Design Tokens ─────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #F4F6FA;
+  --bg2: #ECEEF4;
+  --sidebar-bg: #1B2A4A;
+  --accent: #F5A623;
+  --accent-h: #E8901A;
+  --accent-dim: #FEF3E2;
+  --green: #16A34A;
+  --green-l: #DCFCE7;
+  --red: #DC2626;
+  --red-l: #FEE2E2;
+  --blue: #2563EB;
+  --blue-l: #DBEAFE;
+  --purple: #7C3AED;
+  --purple-l: #EDE9FE;
+  --orange: #EA580C;
+  --orange-l: #FFEDD5;
+  --t1: #111827;
+  --t2: #4B5563;
+  --tm: #9CA3AF;
+  --bd: #E5E7EB;
+  --bd2: #D1D5DB;
+  --card: #FFFFFF;
+  --card-h: #F9FAFB;
+  --sh: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --sh-md: 0 4px 16px rgba(0, 0, 0, 0.10);
+  --sh-lg: 0 10px 40px rgba(0, 0, 0, 0.15);
+  --r: 10px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* ── Base Reset ────────────────────────────────────────── */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-jakarta), 'Plus Jakarta Sans', sans-serif;
+  background: var(--bg);
+  color: var(--t1);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
 }
+
+/* ── Scrollbar ─────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bd2); border-radius: 10px; }
+
+/* ── Table ─────────────────────────────────────────────── */
+table { width: 100%; border-collapse: collapse; }
+th {
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--tm);
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  border-bottom: 1px solid var(--bd);
+  background: #FAFAFA;
+  white-space: nowrap;
+}
+td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--bd);
+  font-size: 12px;
+  vertical-align: middle;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--card-h); }
+
+input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* ── Form Elements ─────────────────────────────────────── */
+input[type="text"],
+input[type="number"],
+input[type="date"],
+input[type="time"],
+input[type="email"],
+input[type="tel"],
+input[type="password"],
+textarea {
+  background: var(--bg);
+  border: 1.5px solid var(--bd2);
+  border-radius: 7px;
+  padding: 7px 10px;
+  color: var(--t1);
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.14s, box-shadow 0.14s;
+  width: 100%;
+}
+/* Selects: auto width by default; full-width only inside form items */
+select {
+  background: var(--bg);
+  border: 1.5px solid var(--bd2);
+  border-radius: 7px;
+  padding: 7px 10px;
+  color: var(--t1);
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.14s, box-shadow 0.14s;
+  width: auto;
+}
+/* Full-width select inside a FormItem wrapper */
+.pk-form-item select { width: 100%; }
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(245, 166, 35, 0.1);
+}
+input::placeholder, textarea::placeholder { color: var(--tm); }
+textarea { resize: vertical; min-height: 60px; }
+
+/* ── Mono utility ──────────────────────────────────────── */
+.pk-mono { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+
+/* ── Child row ─────────────────────────────────────────── */
+.child-row td { background: #FAFBFF; border-bottom: 1px solid #F0F0FF; }
+.child-row:hover td { background: #EEF1FF; }
+.child-indent { padding-left: 42px !important; }
+
+/* ── Inline edit ───────────────────────────────────────── */
+.ie {
+  background: var(--bg);
+  border: 1.5px solid var(--bd2);
+  border-radius: 5px;
+  padding: 4px 7px;
+  color: var(--t1);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  width: 66px;
+  text-align: center;
+  outline: none;
+}
+.ie:focus { border-color: var(--accent); }
