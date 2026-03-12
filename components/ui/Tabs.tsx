@@ -43,7 +43,6 @@ export function Tabs({ tabs, defaultTab, onChange, children }: TabsProps) {
               fontSize: 12,
               fontWeight: 600,
               color: active === tab.key ? "var(--accent)" : "var(--tm)",
-              borderBottom: active === tab.key ? "2px solid var(--accent)" : "2px solid transparent",
               background: "none",
               border: "none",
               borderBottom: active === tab.key ? "2px solid var(--accent)" : "2px solid transparent",
