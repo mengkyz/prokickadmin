@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { getSupabaseClient } from "@/lib/supabase";
 import type { Package, PackageCategory } from "@/lib/types";
 
 // ── Actual Supabase table columns ────────────────────────
@@ -45,7 +45,7 @@ function packageToRow(pkg: Omit<Package, "id">) {
 
 // ── READ ─────────────────────────────────────────────────
 export async function fetchPackages(): Promise<Package[]> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabaseClient()
     .from("package_templates")
     .select("*")
     .order("type")
@@ -57,7 +57,7 @@ export async function fetchPackages(): Promise<Package[]> {
 
 // ── CREATE ───────────────────────────────────────────────
 export async function createPackage(pkg: Omit<Package, "id">): Promise<Package> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabaseClient()
     .from("package_templates")
     .insert(packageToRow(pkg))
     .select()
@@ -69,7 +69,7 @@ export async function createPackage(pkg: Omit<Package, "id">): Promise<Package> 
 
 // ── UPDATE ───────────────────────────────────────────────
 export async function updatePackage(id: string, pkg: Omit<Package, "id">): Promise<Package> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabaseClient()
     .from("package_templates")
     .update(packageToRow(pkg))
     .eq("id", Number(id))
@@ -82,7 +82,7 @@ export async function updatePackage(id: string, pkg: Omit<Package, "id">): Promi
 
 // ── DELETE ───────────────────────────────────────────────
 export async function deletePackage(id: string): Promise<void> {
-  const { error } = await supabase
+  const { error } = await getSupabaseClient()
     .from("package_templates")
     .delete()
     .eq("id", Number(id));
