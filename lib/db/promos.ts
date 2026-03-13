@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { getSupabaseClient } from "@/lib/supabase";
 import type { PromoCode, PromoStatus, DiscountType } from "@/lib/types";
 
 // ── Supabase table columns ────────────────────────────────
@@ -47,7 +47,7 @@ function promoToRow(p: Omit<PromoCode, "id" | "usedCount" | "status"> & { isActi
 
 // ── READ ─────────────────────────────────────────────────
 export async function fetchPromos(): Promise<PromoCode[]> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabaseClient()
     .from("promo_codes")
     .select("*")
     .order("created_at", { ascending: false });
@@ -60,7 +60,7 @@ export async function fetchPromos(): Promise<PromoCode[]> {
 export async function createPromo(
   p: Omit<PromoCode, "id" | "usedCount" | "status"> & { isActive: boolean }
 ): Promise<PromoCode> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabaseClient()
     .from("promo_codes")
     .insert(promoToRow(p))
     .select()
@@ -75,7 +75,7 @@ export async function updatePromo(
   id: string,
   p: Omit<PromoCode, "id" | "usedCount" | "status"> & { isActive: boolean }
 ): Promise<PromoCode> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabaseClient()
     .from("promo_codes")
     .update(promoToRow(p))
     .eq("id", id)
@@ -88,7 +88,7 @@ export async function updatePromo(
 
 // ── TOGGLE ACTIVE ─────────────────────────────────────────
 export async function togglePromoActive(id: string, isActive: boolean): Promise<void> {
-  const { error } = await supabase
+  const { error } = await getSupabaseClient()
     .from("promo_codes")
     .update({ is_active: isActive })
     .eq("id", id);
@@ -98,7 +98,7 @@ export async function togglePromoActive(id: string, isActive: boolean): Promise<
 
 // ── DELETE ───────────────────────────────────────────────
 export async function deletePromo(id: string): Promise<void> {
-  const { error } = await supabase
+  const { error } = await getSupabaseClient()
     .from("promo_codes")
     .delete()
     .eq("id", id);
