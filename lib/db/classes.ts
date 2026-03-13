@@ -168,7 +168,9 @@ export interface ClassInput {
   startTime: string;   // ISO datetime string or "YYYY-MM-DDTHH:MM"
   endTime: string;
   venue: string;
+  venueId?: string | null;   // FK to venues table (new records only)
   coach: string;
+  coachId?: string | null;   // FK to coaches table (new records only)
   capacity: number;
   packageFilter: PackageFilter;
   notes?: string;
@@ -215,7 +217,9 @@ export async function createClass(input: ClassInput): Promise<AdminClass> {
       start_time: input.startTime,
       end_time: input.endTime,
       location: input.venue,
+      venue_id: input.venueId ?? null,
       coach: input.coach || null,
+      coach_id: input.coachId ?? null,
       max_capacity: input.capacity,
       current_bookings: 0,
       package_filter: input.packageFilter,
@@ -235,7 +239,9 @@ export async function createClasses(inputs: ClassInput[]): Promise<number> {
     start_time: input.startTime,
     end_time: input.endTime,
     location: input.venue,
+    venue_id: input.venueId ?? null,
     coach: input.coach || null,
+    coach_id: input.coachId ?? null,
     max_capacity: input.capacity,
     current_bookings: 0,
     package_filter: input.packageFilter,
@@ -258,7 +264,9 @@ export async function updateClass(id: string, input: Partial<ClassInput>): Promi
   if (input.startTime !== undefined)    updates.start_time    = input.startTime;
   if (input.endTime !== undefined)      updates.end_time      = input.endTime;
   if (input.venue !== undefined)        updates.location      = input.venue;
+  if (input.venueId !== undefined)      (updates as Record<string, unknown>).venue_id = input.venueId ?? null;
   if (input.coach !== undefined)        updates.coach         = input.coach || null;
+  if (input.coachId !== undefined)      (updates as Record<string, unknown>).coach_id = input.coachId ?? null;
   if (input.capacity !== undefined)     updates.max_capacity  = input.capacity;
   if (input.packageFilter !== undefined) updates.package_filter = input.packageFilter;
   if (input.notes !== undefined)        updates.notes         = input.notes || null;
