@@ -6,9 +6,8 @@ import { Button } from "@/components/ui/Button";
 import { useToast } from "@/lib/context/ToastContext";
 import { updateClass, cancelClass } from "@/lib/db/classes";
 import type { AdminClass, ClassInput, PackageFilter } from "@/lib/db/classes";
-
-const VENUES = ["Grand Field", "Arena A", "Small Arena"];
-const COACHES = ["Pro Coach", "Coach Arm", "Coach Bee"];
+import { fetchVenues, fetchCoaches } from "@/lib/db/settings";
+import type { AdminVenue, AdminCoach } from "@/lib/db/settings";
 
 interface Props {
   open: boolean;
@@ -22,6 +21,10 @@ export function EditClassModal({ open, onClose, cls, onSaved, onCancelled }: Pro
   const { showToast } = useToast();
   const [saving, setSaving] = useState(false);
 
+  // Venues & coaches from DB
+  const [venues, setVenues] = useState<AdminVenue[]>([]);
+  const [coaches, setCoaches] = useState<AdminCoach[]>([]);
+
   // Pre-fill form from cls prop
   const isoToDate = (iso: string) => iso ? iso.split("T")[0] : "";
   const isoToTime = (iso: string) => {
@@ -33,20 +36,32 @@ export function EditClassModal({ open, onClose, cls, onSaved, onCancelled }: Pro
   const [date, setDate]           = useState(() => isoToDate(cls?.startTimeIso ?? ""));
   const [timeStart, setTimeStart] = useState(() => isoToTime(cls?.startTimeIso ?? ""));
   const [timeEnd, setTimeEnd]     = useState(() => isoToTime(cls?.endTimeIso ?? ""));
-  const [venue, setVenue]         = useState(() => cls?.venue ?? VENUES[0]);
-  const [coach, setCoach]         = useState(() => cls?.coach ?? COACHES[0]);
+  const [selectedVenue, setSelectedVenue] = useState<AdminVenue | null>(null);
+  const [selectedCoach, setSelectedCoach] = useState<AdminCoach | null>(null);
   const [pkgFilter, setPkgFilter] = useState<PackageFilter>(() => cls?.packageFilter ?? "all");
   const [capacity, setCapacity]   = useState(() => cls?.capacity ?? 20);
   const [notes, setNotes]         = useState(() => cls?.notes ?? "");
 
-  // Re-sync when cls changes (key-prop pattern keeps this correct)
+  // Load venues & coaches when modal opens, then match current class values
+  useEffect(() => {
+    if (!open) return;
+    Promise.all([fetchVenues(), fetchCoaches()])
+      .then(([vs, cs]) => {
+        setVenues(vs);
+        setCoaches(cs);
+        // Match by name (covers both old text-only records and new FK records)
+        setSelectedVenue(vs.find((v) => v.name === cls?.venue) ?? vs[0] ?? null);
+        setSelectedCoach(cs.find((c) => c.name === cls?.coach) ?? cs[0] ?? null);
+      })
+      .catch((err) => showToast((err as Error).message, "error"));
+  }, [open, cls, showToast]);
+
+  // Re-sync date/time/filter fields when cls changes
   useEffect(() => {
     if (cls) {
       setDate(isoToDate(cls.startTimeIso));
       setTimeStart(isoToTime(cls.startTimeIso));
       setTimeEnd(isoToTime(cls.endTimeIso));
-      setVenue(cls.venue);
-      setCoach(cls.coach);
       setPkgFilter(cls.packageFilter);
       setCapacity(cls.capacity);
       setNotes(cls.notes);
@@ -64,7 +79,13 @@ export function EditClassModal({ open, onClose, cls, onSaved, onCancelled }: Pro
       const input: ClassInput = {
         startTime: new Date(base.getFullYear(), base.getMonth(), base.getDate(), sh, sm).toISOString(),
         endTime:   new Date(base.getFullYear(), base.getMonth(), base.getDate(), eh, em).toISOString(),
-        venue, coach, capacity, packageFilter: pkgFilter, notes,
+        venue: selectedVenue?.name ?? "",
+        venueId: selectedVenue?.id ?? null,
+        coach: selectedCoach?.name ?? "",
+        coachId: selectedCoach?.id ?? null,
+        capacity,
+        packageFilter: pkgFilter,
+        notes,
       };
 
       const updated = await updateClass(cls.id, input);
@@ -123,13 +144,19 @@ export function EditClassModal({ open, onClose, cls, onSaved, onCancelled }: Pro
           <input type="time" value={timeEnd} onChange={(e) => setTimeEnd(e.target.value)} />
         </FormItem>
         <FormItem label="สนาม">
-          <select value={venue} onChange={(e) => setVenue(e.target.value)}>
-            {VENUES.map((v) => <option key={v}>{v}</option>)}
+          <select
+            value={selectedVenue?.id ?? ""}
+            onChange={(e) => setSelectedVenue(venues.find((v) => v.id === e.target.value) ?? null)}
+          >
+            {venues.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
           </select>
         </FormItem>
         <FormItem label="โค้ช">
-          <select value={coach} onChange={(e) => setCoach(e.target.value)}>
-            {COACHES.map((c) => <option key={c}>{c}</option>)}
+          <select
+            value={selectedCoach?.id ?? ""}
+            onChange={(e) => setSelectedCoach(coaches.find((c) => c.id === e.target.value) ?? null)}
+          >
+            {coaches.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </FormItem>
         <FormItem label="แพ็กเกจที่รับ">

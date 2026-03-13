@@ -1,13 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Modal, FormGrid, FormItem, FormSection, DefaultFooter } from "@/components/ui/Modal";
 import { useToast } from "@/lib/context/ToastContext";
 import { createClass, createClasses } from "@/lib/db/classes";
 import type { ClassInput, PackageFilter, AdminClass } from "@/lib/db/classes";
-
-const VENUES = ["Grand Field", "Arena A", "Small Arena"];
-const COACHES = ["Pro Coach", "Coach Arm", "Coach Bee"];
+import { fetchVenues, fetchCoaches } from "@/lib/db/settings";
+import type { AdminVenue, AdminCoach } from "@/lib/db/settings";
 
 const RECUR_OPTIONS = [
   { value: "none",     label: "Does not repeat",           desc: "" },
@@ -31,16 +30,33 @@ export function CreateClassModal({ open, onClose, onCreated }: Props) {
   const [recur, setRecur] = useState("none");
   const [selectedDays, setSelectedDays] = useState<number[]>([1, 4]);
 
+  // Venues & coaches from DB
+  const [venues, setVenues] = useState<AdminVenue[]>([]);
+  const [coaches, setCoaches] = useState<AdminCoach[]>([]);
+
   // Form state
-  const [date, setDate]         = useState("");
+  const [date, setDate]           = useState("");
   const [timeStart, setTimeStart] = useState("09:00");
-  const [timeEnd, setTimeEnd]   = useState("10:30");
-  const [venue, setVenue]       = useState(VENUES[0]);
-  const [coach, setCoach]       = useState(COACHES[0]);
+  const [timeEnd, setTimeEnd]     = useState("10:30");
+  const [selectedVenue, setSelectedVenue] = useState<AdminVenue | null>(null);
+  const [selectedCoach, setSelectedCoach] = useState<AdminCoach | null>(null);
   const [pkgFilter, setPkgFilter] = useState<PackageFilter>("all");
-  const [capacity, setCapacity] = useState(20);
-  const [notes, setNotes]       = useState("");
-  const [recurEnd, setRecurEnd] = useState("");
+  const [capacity, setCapacity]   = useState(20);
+  const [notes, setNotes]         = useState("");
+  const [recurEnd, setRecurEnd]   = useState("");
+
+  // Load venues & coaches when modal opens
+  useEffect(() => {
+    if (!open) return;
+    Promise.all([fetchVenues(), fetchCoaches()])
+      .then(([vs, cs]) => {
+        setVenues(vs);
+        setCoaches(cs);
+        setSelectedVenue((prev) => prev ?? vs[0] ?? null);
+        setSelectedCoach((prev) => prev ?? cs[0] ?? null);
+      })
+      .catch((err) => showToast((err as Error).message, "error"));
+  }, [open, showToast]);
 
   function toggleDay(idx: number) {
     setSelectedDays((prev) =>
@@ -95,8 +111,10 @@ export function CreateClassModal({ open, onClose, onCreated }: Props) {
       const input: ClassInput = {
         startTime: new Date(baseStart.getFullYear(), baseStart.getMonth(), baseStart.getDate(), sh, sm).toISOString(),
         endTime:   new Date(baseStart.getFullYear(), baseStart.getMonth(), baseStart.getDate(), eh, em).toISOString(),
-        venue,
-        coach,
+        venue: selectedVenue?.name ?? "",
+        venueId: selectedVenue?.id ?? null,
+        coach: selectedCoach?.name ?? "",
+        coachId: selectedCoach?.id ?? null,
         capacity,
         packageFilter: pkgFilter,
         notes,
@@ -126,8 +144,8 @@ export function CreateClassModal({ open, onClose, onCreated }: Props) {
       onClose();
       // Reset form
       setDate(""); setTimeStart("09:00"); setTimeEnd("10:30");
-      setVenue(VENUES[0]); setCoach(COACHES[0]); setPkgFilter("all");
-      setCapacity(20); setNotes(""); setRecur("none"); setRecurEnd("");
+      setSelectedVenue(venues[0] ?? null); setSelectedCoach(coaches[0] ?? null);
+      setPkgFilter("all"); setCapacity(20); setNotes(""); setRecur("none"); setRecurEnd("");
     } catch (err) {
       showToast((err as Error).message, "error");
     } finally {
@@ -160,13 +178,19 @@ export function CreateClassModal({ open, onClose, onCreated }: Props) {
           <input type="time" value={timeEnd} onChange={(e) => setTimeEnd(e.target.value)} />
         </FormItem>
         <FormItem label="สนาม">
-          <select value={venue} onChange={(e) => setVenue(e.target.value)}>
-            {VENUES.map((v) => <option key={v}>{v}</option>)}
+          <select
+            value={selectedVenue?.id ?? ""}
+            onChange={(e) => setSelectedVenue(venues.find((v) => v.id === e.target.value) ?? null)}
+          >
+            {venues.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
           </select>
         </FormItem>
         <FormItem label="โค้ช">
-          <select value={coach} onChange={(e) => setCoach(e.target.value)}>
-            {COACHES.map((c) => <option key={c}>{c}</option>)}
+          <select
+            value={selectedCoach?.id ?? ""}
+            onChange={(e) => setSelectedCoach(coaches.find((c) => c.id === e.target.value) ?? null)}
+          >
+            {coaches.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </FormItem>
         <FormItem label="แพ็กเกจที่รับ">
