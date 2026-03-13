@@ -114,6 +114,7 @@ export default function PackagesPage() {
         onSuccess={load}
       />
       <PackageModal
+        key={editTarget?.id}
         open={modal === "edit"}
         onClose={() => setModal("none")}
         mode="edit"
