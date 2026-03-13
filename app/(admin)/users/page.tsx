@@ -52,7 +52,7 @@ export default function UsersPage() {
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return users.filter((u) => {
-      if (q && !u.fullName.toLowerCase().includes(q) && !u.phone.includes(q)) return false;
+      if (q && !u.fullName.toLowerCase().includes(q) && !(u.phone ?? "").includes(q)) return false;
       if (filterType === "parent" && !u.types.includes("Parent")) return false;
       if (filterType === "player" && !u.types.includes("Player")) return false;
       if (filterStatus !== "all" && u.status.toLowerCase() !== filterStatus.toLowerCase()) return false;
