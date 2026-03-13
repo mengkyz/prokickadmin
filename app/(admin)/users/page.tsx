@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge, BadgeVariant } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -8,7 +8,8 @@ import { ProgressBar } from "@/components/ui/ProgressBar";
 import { UserParentModal } from "@/components/users/UserParentModal";
 import { UserChildModal } from "@/components/users/UserChildModal";
 import { ExportUsersModal } from "@/components/users/ExportUsersModal";
-import { USERS } from "@/lib/mock/data";
+import { fetchUsers } from "@/lib/db/users";
+import type { AdminUser, AdminChild } from "@/lib/db/users";
 
 type Modal = "none" | "parent" | "child" | "export";
 
@@ -16,11 +17,53 @@ const statusVariant: Record<string, BadgeVariant> = {
   Active: "green",
   Expired: "red",
   Low: "orange",
+  "No Package": "gray",
 };
 
 export default function UsersPage() {
-  const [modal, setModal] = useState<Modal>("none");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [modal, setModal]             = useState<Modal>("none");
+  const [selected, setSelected]       = useState<Set<string>>(new Set());
+  const [users, setUsers]             = useState<AdminUser[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState<string | null>(null);
+  const [editTarget, setEditTarget]   = useState<AdminUser | null>(null);
+  const [childTarget, setChildTarget] = useState<AdminChild | null>(null);
+
+  // Filters
+  const [search, setSearch]           = useState("");
+  const [filterType, setFilterType]   = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      setUsers(await fetchUsers());
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { load(); }, []);
+
+  // Filtered list
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return users.filter((u) => {
+      if (q && !u.fullName.toLowerCase().includes(q) && !u.phone.includes(q)) return false;
+      if (filterType === "parent" && !u.types.includes("Parent")) return false;
+      if (filterType === "player" && !u.types.includes("Player")) return false;
+      if (filterStatus !== "all" && u.status.toLowerCase() !== filterStatus.toLowerCase()) return false;
+      return true;
+    });
+  }, [users, search, filterType, filterStatus]);
+
+  const allIds = useMemo(() =>
+    filtered.flatMap((u) => [u.id, ...u.children.map((c) => c.id)]),
+    [filtered]
+  );
 
   function toggleUser(id: string) {
     setSelected((prev) => {
@@ -30,10 +73,22 @@ export default function UsersPage() {
     });
   }
 
-  const allIds = USERS.flatMap((u) => [u.id, ...u.children.map((c) => c.id)]);
-
   function toggleAll(checked: boolean) {
     setSelected(checked ? new Set(allIds) : new Set());
+  }
+
+  function openParent(user: AdminUser) {
+    setEditTarget(user);
+    setModal("parent");
+  }
+
+  function openChild(child: AdminChild) {
+    setChildTarget(child);
+    setModal("child");
+  }
+
+  function handleClose() {
+    setModal("none");
   }
 
   return (
@@ -41,30 +96,44 @@ export default function UsersPage() {
       <Card>
         <CardHeader icon="👥" title="ผู้ใช้ทั้งหมด" />
 
-        {/* Date range filter */}
-        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 14px", borderBottom: "1px solid var(--bd)", flexWrap: "wrap", background: "var(--card-h)" }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: "var(--tm)" }}>ช่วงเวลา:</span>
-          <input type="date" defaultValue="2026-01-01" style={{ padding: "5px 8px", borderRadius: 6, fontSize: 11, fontFamily: "inherit", border: "1.5px solid var(--bd2)", background: "var(--bg)", color: "var(--t1)", cursor: "pointer", outline: "none", width: "auto" }} />
-          <span style={{ color: "var(--tm)", fontSize: 11 }}>→</span>
-          <input type="date" defaultValue="2026-03-12" style={{ padding: "5px 8px", borderRadius: 6, fontSize: 11, fontFamily: "inherit", border: "1.5px solid var(--bd2)", background: "var(--bg)", color: "var(--t1)", cursor: "pointer", outline: "none", width: "auto" }} />
-        </div>
-
         {/* Filters row */}
         <div style={{ display: "flex", gap: 7, padding: "10px 14px", borderBottom: "1px solid var(--bd)", flexWrap: "wrap", alignItems: "center", background: "var(--card-h)" }}>
           <input
             type="text"
             placeholder="ค้นหาชื่อ / เบอร์..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
             style={{ padding: "5px 9px", background: "var(--bg)", border: "1.5px solid var(--bd2)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 11, outline: "none", width: 160 }}
           />
-          {["ทุกประเภท", "ทุกแพ็กเกจ", "ทุกสถานะ"].map((opt, i) => (
-            <select key={i} style={{ padding: "5px 9px", background: "var(--bg)", border: "1.5px solid var(--bd2)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 11, cursor: "pointer", outline: "none" }}>
-              <option>{opt}</option>
-              {i === 0 && <><option>Player</option><option>Parent</option></>}
-              {i === 1 && <><option>Fun Pack</option><option>Pro Pack</option><option>Elite Pack</option></>}
-              {i === 2 && <><option>Active</option><option>Expired</option></>}
-            </select>
-          ))}
-          <div style={{ marginLeft: "auto" }}>
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+            style={{ padding: "5px 9px", background: "var(--bg)", border: "1.5px solid var(--bd2)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 11, cursor: "pointer", outline: "none" }}
+          >
+            <option value="all">ทุกประเภท</option>
+            <option value="player">Player</option>
+            <option value="parent">Parent</option>
+          </select>
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            style={{ padding: "5px 9px", background: "var(--bg)", border: "1.5px solid var(--bd2)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 11, cursor: "pointer", outline: "none" }}
+          >
+            <option value="all">ทุกสถานะ</option>
+            <option value="active">Active</option>
+            <option value="low">Low</option>
+            <option value="expired">Expired</option>
+            <option value="no package">No Package</option>
+          </select>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 7, alignItems: "center" }}>
+            {!loading && (
+              <span style={{ fontSize: 11, color: "var(--tm)" }}>
+                {filtered.length} ราย
+              </span>
+            )}
+            <Button variant="ghost" size="sm" onClick={load}>
+              🔄 รีเฟรช
+            </Button>
             {selected.size > 0 && (
               <Button variant="ghost" size="sm" onClick={() => setModal("export")}>
                 📥 Export ที่เลือก ({selected.size})
@@ -73,113 +142,178 @@ export default function UsersPage() {
           </div>
         </div>
 
-        <table>
-          <thead>
-            <tr>
-              <th><input type="checkbox" checked={selected.size === allIds.length} onChange={(e) => toggleAll(e.target.checked)} /></th>
-              <th>ผู้ใช้</th><th>ประเภท</th><th>แพ็กเกจ</th><th>Sessions</th><th>Extra</th><th>สถานะ</th><th>หมดอายุ</th><th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {USERS.map((user) => (
-              <React.Fragment key={user.id}>
-                {/* Parent/Player row */}
-                <tr onClick={() => setModal(user.types.includes("Parent") ? "parent" : "parent")} style={{ cursor: "pointer" }}>
-                  <td onClick={(e) => { e.stopPropagation(); toggleUser(user.id); }}>
-                    <input type="checkbox" checked={selected.has(user.id)} onChange={() => {}} />
-                  </td>
-                  <td>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <div style={{ width: 28, height: 28, borderRadius: "50%", background: user.avatarColor, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
-                        {user.avatarInitial}
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 12, fontWeight: 600 }}>{user.name}</div>
-                        <div style={{ fontSize: 10, color: "var(--tm)" }}>{user.phone}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td>
-                    <div style={{ display: "flex", gap: 3 }}>
-                      {user.types.map((t) => (
-                        <Badge key={t} variant={t === "Parent" ? "blue" : "orange"}>{t}</Badge>
-                      ))}
-                    </div>
-                  </td>
-                  <td>
-                    {user.package && (
-                      <>
-                        <div style={{ fontSize: 11, fontWeight: 600 }}>{user.package.packageName}</div>
-                        <div style={{ fontSize: 10, color: "var(--tm)" }}>{user.package.startDate}–{user.package.endDate}</div>
-                      </>
-                    )}
-                  </td>
-                  <td>
-                    {user.package && (
-                      <ProgressBar value={user.sessions.used} max={user.sessions.total} />
-                    )}
-                  </td>
-                  <td className="pk-mono">{user.extra.used}/{user.extra.total}</td>
-                  <td><Badge variant={statusVariant[user.status] ?? "gray"}>
-                    {user.status === "Active" ? "● Active" : user.status === "Low" ? "⚠ Low" : user.status}
-                  </Badge></td>
-                  <td className="pk-mono">{user.expiresAt}</td>
-                  <td>
-                    <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setModal("parent"); }}>
-                      จัดการ
-                    </Button>
+        {/* Loading / Error states */}
+        {loading && (
+          <div style={{ textAlign: "center", padding: 40, color: "var(--tm)", fontSize: 13 }}>
+            กำลังโหลด...
+          </div>
+        )}
+        {error && (
+          <div style={{ textAlign: "center", padding: 40, color: "var(--red)", fontSize: 13 }}>
+            {error}
+          </div>
+        )}
+
+        {!loading && !error && (
+          <table>
+            <thead>
+              <tr>
+                <th>
+                  <input
+                    type="checkbox"
+                    checked={allIds.length > 0 && selected.size === allIds.length}
+                    onChange={(e) => toggleAll(e.target.checked)}
+                  />
+                </th>
+                <th>ผู้ใช้</th>
+                <th>ประเภท</th>
+                <th>แพ็กเกจ</th>
+                <th>Sessions</th>
+                <th>Extra</th>
+                <th>สถานะ</th>
+                <th>หมดอายุ</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={9} style={{ textAlign: "center", padding: 32, color: "var(--tm)", fontSize: 13 }}>
+                    ไม่พบข้อมูล
                   </td>
                 </tr>
-
-                {/* Child rows */}
-                {user.children.map((child) => (
-                  <tr key={child.id} className="child-row" onClick={() => setModal("child")} style={{ cursor: "pointer" }}>
-                    <td onClick={(e) => { e.stopPropagation(); toggleUser(child.id); }} className="child-indent">
-                      <input type="checkbox" checked={selected.has(child.id)} onChange={() => {}} />
+              )}
+              {filtered.map((user) => (
+                <React.Fragment key={user.id}>
+                  {/* Parent/Player row */}
+                  <tr onClick={() => openParent(user)} style={{ cursor: "pointer" }}>
+                    <td onClick={(e) => { e.stopPropagation(); toggleUser(user.id); }}>
+                      <input type="checkbox" checked={selected.has(user.id)} onChange={() => {}} />
                     </td>
-                    <td className="child-indent">
+                    <td>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <div style={{ width: 22, height: 22, borderRadius: "50%", background: "linear-gradient(135deg,#60A5FA,#A78BFA)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
-                          {child.nickname.charAt(0)}
+                        <div style={{ width: 28, height: 28, borderRadius: "50%", background: user.avatarColor, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
+                          {user.avatarInitial}
                         </div>
                         <div>
-                          <div style={{ fontSize: 11, fontWeight: 600 }}>{child.nickname}</div>
-                          <div style={{ fontSize: 10, color: "var(--tm)" }}>เด็ก · ลูกของ {user.name}</div>
+                          <div style={{ fontSize: 12, fontWeight: 600 }}>{user.fullName}</div>
+                          <div style={{ fontSize: 10, color: "var(--tm)" }}>{user.phone}</div>
                         </div>
                       </div>
                     </td>
-                    <td><Badge variant="gray">Child</Badge></td>
                     <td>
-                      {child.package && (
+                      <div style={{ display: "flex", gap: 3 }}>
+                        {user.types.map((t) => (
+                          <Badge key={t} variant={t === "Parent" ? "blue" : "orange"}>{t}</Badge>
+                        ))}
+                      </div>
+                    </td>
+                    <td>
+                      {user.activePackage && (
                         <>
-                          <div style={{ fontSize: 10, fontWeight: 600 }}>{child.package.packageName}</div>
-                          <div style={{ fontSize: 10, color: "var(--tm)" }}>{child.package.startDate}–{child.package.endDate}</div>
+                          <div style={{ fontSize: 11, fontWeight: 600 }}>{user.activePackage.packageName}</div>
+                          <div style={{ fontSize: 10, color: "var(--tm)" }}>{user.activePackage.startDate} – {user.activePackage.expiryDate}</div>
                         </>
                       )}
                     </td>
-                    <td>
-                      {child.package && (
-                        <ProgressBar value={child.package.sessionsRemaining} max={child.package.sessionsTotal} />
-                      )}
+                    <td style={{ minWidth: 90 }}>
+                      {user.activePackage ? (
+                        <ProgressBar
+                          value={user.activePackage.totalSessions - user.activePackage.remainingSessions}
+                          max={user.activePackage.totalSessions}
+                        />
+                      ) : <span style={{ color: "var(--tm)", fontSize: 11 }}>—</span>}
                     </td>
-                    <td className="pk-mono">—</td>
-                    <td><Badge variant="green">● Active</Badge></td>
-                    <td className="pk-mono">{child.package?.endDate ?? "—"}</td>
+                    <td className="pk-mono">
+                      {user.activePackage ? (user.activePackage.extraSessionsPurchased ?? 0) : "—"}
+                    </td>
                     <td>
-                      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setModal("child"); }}>
+                      <Badge variant={statusVariant[user.status] ?? "gray"}>
+                        {user.status === "Active" ? "● Active"
+                          : user.status === "Low" ? "⚠ Low"
+                          : user.status}
+                      </Badge>
+                    </td>
+                    <td className="pk-mono">{user.activePackage?.expiryDate ?? "—"}</td>
+                    <td>
+                      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); openParent(user); }}>
                         จัดการ
                       </Button>
                     </td>
                   </tr>
-                ))}
-              </React.Fragment>
-            ))}
-          </tbody>
-        </table>
+
+                  {/* Child rows */}
+                  {user.children.map((child) => (
+                    <tr key={child.id} className="child-row" onClick={() => openChild(child)} style={{ cursor: "pointer" }}>
+                      <td onClick={(e) => { e.stopPropagation(); toggleUser(child.id); }} className="child-indent">
+                        <input type="checkbox" checked={selected.has(child.id)} onChange={() => {}} />
+                      </td>
+                      <td className="child-indent">
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ width: 22, height: 22, borderRadius: "50%", background: child.avatarColor, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
+                            {child.avatarInitial}
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 11, fontWeight: 600 }}>{child.nickname}</div>
+                            <div style={{ fontSize: 10, color: "var(--tm)" }}>เด็ก · ลูกของ {user.fullName}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td><Badge variant="gray">Child</Badge></td>
+                      <td>
+                        {child.activePackage && (
+                          <>
+                            <div style={{ fontSize: 10, fontWeight: 600 }}>{child.activePackage.packageName}</div>
+                            <div style={{ fontSize: 10, color: "var(--tm)" }}>{child.activePackage.startDate} – {child.activePackage.expiryDate}</div>
+                          </>
+                        )}
+                      </td>
+                      <td style={{ minWidth: 90 }}>
+                        {child.activePackage ? (
+                          <ProgressBar
+                            value={child.activePackage.totalSessions - child.activePackage.remainingSessions}
+                            max={child.activePackage.totalSessions}
+                          />
+                        ) : <span style={{ color: "var(--tm)", fontSize: 11 }}>—</span>}
+                      </td>
+                      <td className="pk-mono">—</td>
+                      <td>
+                        <Badge variant={statusVariant[child.status] ?? "gray"}>
+                          {child.status === "Active" ? "● Active"
+                            : child.status === "Low" ? "⚠ Low"
+                            : child.status}
+                        </Badge>
+                      </td>
+                      <td className="pk-mono">{child.activePackage?.expiryDate ?? "—"}</td>
+                      <td>
+                        <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); openChild(child); }}>
+                          จัดการ
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        )}
       </Card>
 
-      <UserParentModal open={modal === "parent"} onClose={() => setModal("none")} />
-      <UserChildModal open={modal === "child"} onClose={() => setModal("none")} />
+      {/* key= ensures modal form state resets when target changes */}
+      <UserParentModal
+        key={editTarget?.id ?? "parent-none"}
+        open={modal === "parent"}
+        onClose={handleClose}
+        user={editTarget}
+        onSaved={() => load()}
+      />
+      <UserChildModal
+        key={childTarget?.id ?? "child-none"}
+        open={modal === "child"}
+        onClose={handleClose}
+        child={childTarget}
+        onSaved={() => load()}
+      />
       <ExportUsersModal open={modal === "export"} onClose={() => setModal("none")} />
     </>
   );
