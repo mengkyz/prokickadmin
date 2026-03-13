@@ -78,7 +78,7 @@ export function TodayClassesCard() {
         </div>
       </Card>
 
-      <IncomingDetailModal open={detailOpen} onClose={() => setDetailOpen(false)} />
+      <IncomingDetailModal open={detailOpen} onClose={() => setDetailOpen(false)} cls={null} />
     </>
   );
 }
