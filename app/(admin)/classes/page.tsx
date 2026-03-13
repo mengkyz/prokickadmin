@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { Card, CardHeader } from "@/components/ui/Card";
+import React, { useState, useEffect, useCallback } from "react";
+import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ProgressBar } from "@/components/ui/ProgressBar";
@@ -11,54 +11,135 @@ import { EditClassModal } from "@/components/classes/EditClassModal";
 import { IncomingDetailModal } from "@/components/classes/IncomingDetailModal";
 import { HistoryDetailModal } from "@/components/classes/HistoryDetailModal";
 import { ExportClassesModal } from "@/components/classes/ExportClassesModal";
-import { INCOMING_CLASSES, HISTORY_CLASSES } from "@/lib/mock/data";
+import { fetchClasses, todayRange, weekRange } from "@/lib/db/classes";
+import type { AdminClass } from "@/lib/db/classes";
 
-type Modal = "none" | "create" | "edit" | "incoming-detail" | "history-detail" | "export";
+type ModalType = "none" | "create" | "edit" | "incoming-detail" | "history-detail" | "export";
 type DateFilter = "today" | "week" | "custom";
 
 export default function ClassesPage() {
-  const [modal, setModal] = useState<Modal>("none");
-  const [dateFilter, setDateFilter] = useState<DateFilter>("today");
-  const [selectedIn, setSelectedIn] = useState<Set<string>>(new Set());
+  const [modal, setModal]           = useState<ModalType>("none");
+  const [dateFilter, setDateFilter] = useState<DateFilter>("week");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo]     = useState("");
+
+  const [classes, setClasses]       = useState<AdminClass[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState<string | null>(null);
+
+  const [editTarget, setEditTarget]     = useState<AdminClass | null>(null);
+  const [detailTarget, setDetailTarget] = useState<AdminClass | null>(null);
+
+  const [selectedIn,   setSelectedIn]   = useState<Set<string>>(new Set());
   const [selectedHist, setSelectedHist] = useState<Set<string>>(new Set());
 
+  // ── Filter dropdowns ─────────────────────────────────────
+  const [filterVenue,  setFilterVenue]  = useState("");
+  const [filterCoach,  setFilterCoach]  = useState("");
+  const [filterPkg,    setFilterPkg]    = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+
+  // ── Load data ─────────────────────────────────────────────
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      let range: { from: string; to: string };
+      if (dateFilter === "today") {
+        range = todayRange();
+      } else if (dateFilter === "week") {
+        range = weekRange();
+      } else {
+        if (!customFrom || !customTo) {
+          setClasses([]);
+          setLoading(false);
+          return;
+        }
+        range = {
+          from: new Date(customFrom + "T00:00:00").toISOString(),
+          to:   new Date(customTo   + "T23:59:59").toISOString(),
+        };
+      }
+      const data = await fetchClasses(range);
+      setClasses(data);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [dateFilter, customFrom, customTo]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // ── Derived lists ─────────────────────────────────────────
+  const now = new Date();
+
+  function applyFilters(list: AdminClass[], isHistory: boolean) {
+    return list.filter((cls) => {
+      if (filterVenue  && !cls.venue.toLowerCase().includes(filterVenue.toLowerCase())) return false;
+      if (filterCoach  && !cls.coach.toLowerCase().includes(filterCoach.toLowerCase())) return false;
+      if (filterPkg    && cls.packageFilter !== filterPkg) return false;
+      if (filterStatus && cls.status !== filterStatus) return false;
+      return true;
+    });
+  }
+
+  const incoming = applyFilters(
+    classes.filter((c) => new Date(c.startTimeIso) >= now && c.status !== "cancelled"),
+    false
+  );
+  const history = applyFilters(
+    classes.filter((c) => new Date(c.startTimeIso) < now || c.status === "completed" || c.status === "cancelled"),
+    true
+  );
+
+  // ── Checkbox helpers ──────────────────────────────────────
   function toggleIncoming(id: string) {
-    setSelectedIn((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+    setSelectedIn((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   }
-
   function toggleHistory(id: string) {
-    setSelectedHist((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+    setSelectedHist((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   }
-
   function toggleAllIn(checked: boolean) {
-    setSelectedIn(checked ? new Set(INCOMING_CLASSES.map((c) => c.id)) : new Set());
+    setSelectedIn(checked ? new Set(incoming.map((c) => c.id)) : new Set());
   }
-
   function toggleAllHist(checked: boolean) {
-    setSelectedHist(checked ? new Set(HISTORY_CLASSES.map((c) => c.id)) : new Set());
+    setSelectedHist(checked ? new Set(history.map((c) => c.id)) : new Set());
   }
 
+  // ── Modal open helpers ────────────────────────────────────
+  function openEdit(cls: AdminClass) {
+    setEditTarget(cls);
+    setModal("edit");
+  }
+  function openIncomingDetail(cls: AdminClass) {
+    setDetailTarget(cls);
+    setModal("incoming-detail");
+  }
+  function openHistoryDetail(cls: AdminClass) {
+    setDetailTarget(cls);
+    setModal("history-detail");
+  }
+
+  // ── Status badge ──────────────────────────────────────────
   const statusBadge = (status: string) => {
-    if (status === "open") return <Badge variant="green">● ว่าง</Badge>;
-    if (status === "full") return <Badge variant="red">● เต็ม</Badge>;
-    if (status === "waitlist") return <Badge variant="orange">⚠ Waitlist</Badge>;
+    if (status === "open")      return <Badge variant="green">● ว่าง</Badge>;
+    if (status === "full")      return <Badge variant="red">● เต็ม</Badge>;
+    if (status === "waitlist")  return <Badge variant="orange">⚠ Waitlist</Badge>;
     if (status === "completed") return <Badge variant="green">✓ Completed</Badge>;
     if (status === "cancelled") return <Badge variant="red">✕ Cancelled</Badge>;
     return null;
   };
 
-  const packageBadge = (pkg: string) => {
-    if (pkg === "เด็ก") return <Badge variant="blue">{pkg}</Badge>;
-    return <Badge variant="orange">{pkg}</Badge>;
+  const pkgBadge = (filter: string) => {
+    if (filter === "junior") return <Badge variant="blue">เด็ก</Badge>;
+    if (filter === "adult")  return <Badge variant="orange">ผู้ใหญ่</Badge>;
+    return <Badge variant="gray">ทุกประเภท</Badge>;
   };
+
+  // ── Unique values for filter dropdowns ───────────────────
+  const venues  = Array.from(new Set(classes.map((c) => c.venue))).filter(Boolean);
+  const coaches = Array.from(new Set(classes.map((c) => c.coach))).filter(Boolean);
 
   return (
     <>
@@ -71,17 +152,12 @@ export default function ClassesPage() {
               key={key}
               onClick={() => setDateFilter(key)}
               style={{
-                padding: "5px 11px",
-                borderRadius: 6,
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: "pointer",
+                padding: "5px 11px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer",
                 border: "1.5px solid var(--bd2)",
                 background: dateFilter === key ? "var(--accent)" : "var(--bg)",
-                color: dateFilter === key ? "#fff" : "var(--t2)",
+                color:      dateFilter === key ? "#fff" : "var(--t2)",
                 borderColor: dateFilter === key ? "var(--accent)" : "var(--bd2)",
-                transition: "all 0.12s",
-                fontFamily: "inherit",
+                transition: "all 0.12s", fontFamily: "inherit",
               }}
             >
               {key === "today" ? "วันนี้" : key === "week" ? "สัปดาห์นี้" : "กำหนดเอง"}
@@ -89,89 +165,142 @@ export default function ClassesPage() {
           ))}
           {dateFilter === "custom" && (
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <input type="date" style={{ padding: "5px 8px", borderRadius: 6, fontSize: 11, fontFamily: "inherit", border: "1.5px solid var(--bd2)", background: "var(--bg)", color: "var(--t1)", cursor: "pointer", outline: "none", width: "auto" }} />
+              <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)}
+                style={{ padding: "5px 8px", borderRadius: 6, fontSize: 11, fontFamily: "inherit", border: "1.5px solid var(--bd2)", background: "var(--bg)", color: "var(--t1)", cursor: "pointer", outline: "none" }} />
               <span style={{ color: "var(--tm)", fontSize: 11 }}>→</span>
-              <input type="date" style={{ padding: "5px 8px", borderRadius: 6, fontSize: 11, fontFamily: "inherit", border: "1.5px solid var(--bd2)", background: "var(--bg)", color: "var(--t1)", cursor: "pointer", outline: "none", width: "auto" }} />
+              <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)}
+                style={{ padding: "5px 8px", borderRadius: 6, fontSize: 11, fontFamily: "inherit", border: "1.5px solid var(--bd2)", background: "var(--bg)", color: "var(--t1)", cursor: "pointer", outline: "none" }} />
             </div>
           )}
+          {loading && <span style={{ fontSize: 11, color: "var(--tm)" }}>กำลังโหลด...</span>}
+          {error   && <span style={{ fontSize: 11, color: "var(--red)" }}>⚠ {error}</span>}
         </div>
       </Card>
 
-      {/* Classes Tabs Card */}
+      {/* Classes Tabs */}
       <Card>
         <Tabs
           tabs={[
             { key: "incoming", label: "📅 คลาสที่กำลังมา" },
-            { key: "history", label: "📚 ประวัติคลาส" },
+            { key: "history",  label: "📚 ประวัติคลาส" },
           ]}
         >
           {(tab) => (
             <>
+              {/* ── INCOMING ── */}
               {tab === "incoming" && (
                 <>
-                  {/* Filters */}
                   <div style={{ display: "flex", gap: 7, padding: "10px 14px", borderBottom: "1px solid var(--bd)", flexWrap: "wrap", alignItems: "center", background: "var(--card-h)" }}>
-                    {["ทุกสนาม", "ทุกโค้ช", "ทุกแพ็ก", "ทุกสถานะ"].map((opt, i) => (
-                      <select key={i} style={{ padding: "5px 9px", background: "var(--bg)", border: "1.5px solid var(--bd2)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 11, cursor: "pointer", outline: "none" }}>
-                        <option>{opt}</option>
-                        {i === 0 && <><option>Grand Field</option><option>Arena A</option><option>Small Arena</option></>}
-                        {i === 1 && <><option>Pro Coach</option><option>Coach Arm</option><option>Coach Bee</option></>}
-                        {i === 2 && <><option>Fun Pack</option><option>Pro Pack</option><option>Elite Pack</option></>}
-                        {i === 3 && <><option>ว่าง</option><option>เต็ม</option><option>Waitlist</option></>}
-                      </select>
-                    ))}
+                    {/* Venue filter */}
+                    <select value={filterVenue} onChange={(e) => setFilterVenue(e.target.value)}
+                      style={{ padding: "5px 9px", background: "var(--bg)", border: "1.5px solid var(--bd2)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 11, cursor: "pointer", outline: "none" }}>
+                      <option value="">ทุกสนาม</option>
+                      {venues.map((v) => <option key={v}>{v}</option>)}
+                    </select>
+                    {/* Coach filter */}
+                    <select value={filterCoach} onChange={(e) => setFilterCoach(e.target.value)}
+                      style={{ padding: "5px 9px", background: "var(--bg)", border: "1.5px solid var(--bd2)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 11, cursor: "pointer", outline: "none" }}>
+                      <option value="">ทุกโค้ช</option>
+                      {coaches.map((c) => <option key={c}>{c}</option>)}
+                    </select>
+                    {/* Package filter */}
+                    <select value={filterPkg} onChange={(e) => setFilterPkg(e.target.value)}
+                      style={{ padding: "5px 9px", background: "var(--bg)", border: "1.5px solid var(--bd2)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 11, cursor: "pointer", outline: "none" }}>
+                      <option value="">ทุกแพ็ก</option>
+                      <option value="all">ทุกประเภท</option>
+                      <option value="adult">ผู้ใหญ่</option>
+                      <option value="junior">เด็ก</option>
+                    </select>
+                    {/* Status filter */}
+                    <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}
+                      style={{ padding: "5px 9px", background: "var(--bg)", border: "1.5px solid var(--bd2)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 11, cursor: "pointer", outline: "none" }}>
+                      <option value="">ทุกสถานะ</option>
+                      <option value="open">ว่าง</option>
+                      <option value="full">เต็ม</option>
+                      <option value="waitlist">Waitlist</option>
+                    </select>
+
                     <div style={{ marginLeft: "auto", display: "flex", gap: 7, alignItems: "center" }}>
                       {selectedIn.size > 0 && (
                         <Button variant="ghost" size="sm" onClick={() => setModal("export")}>
                           📥 Export ที่เลือก ({selectedIn.size})
                         </Button>
                       )}
-                      <Button variant="primary" size="sm" onClick={() => setModal("create")}>+ สร้างคลาส</Button>
+                      <Button variant="primary" size="sm" onClick={() => setModal("create")}>
+                        + สร้างคลาส
+                      </Button>
                     </div>
                   </div>
 
-                  <table>
-                    <thead>
-                      <tr>
-                        <th><input type="checkbox" checked={selectedIn.size === INCOMING_CLASSES.length} onChange={(e) => toggleAllIn(e.target.checked)} /></th>
-                        <th>วัน/เวลา</th><th>สนาม</th><th>โค้ช</th><th>แพ็กเกจ</th><th>ผู้จอง</th><th>Waitlist</th><th>สถานะ</th><th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {INCOMING_CLASSES.map((cls) => (
-                        <tr key={cls.id}>
-                          <td><input type="checkbox" checked={selectedIn.has(cls.id)} onChange={() => toggleIncoming(cls.id)} /></td>
-                          <td>
-                            <div style={{ fontSize: 12, fontWeight: 600 }}>{cls.dayLabel}</div>
-                            <div style={{ fontSize: 10, color: "var(--tm)", fontFamily: "'JetBrains Mono', monospace" }}>{cls.timeStart}–{cls.timeEnd}</div>
-                          </td>
-                          <td>{cls.venue}</td>
-                          <td>{cls.coach}</td>
-                          <td>{packageBadge(cls.packageFilter)}</td>
-                          <td><ProgressBar value={cls.booked} max={cls.capacity} /></td>
-                          <td className="pk-mono">{cls.waitlist}</td>
-                          <td>{statusBadge(cls.status)}</td>
-                          <td>
-                            <div style={{ display: "flex", gap: 5 }}>
-                              <Button variant="ghost" size="sm" onClick={() => setModal("incoming-detail")}>ดู/จัดการ</Button>
-                              <Button variant="ghost" size="sm" onClick={() => setModal("edit")}>แก้ไข</Button>
-                            </div>
-                          </td>
+                  {loading ? (
+                    <div style={{ padding: 32, textAlign: "center", color: "var(--tm)", fontSize: 13 }}>กำลังโหลด...</div>
+                  ) : incoming.length === 0 ? (
+                    <div style={{ padding: 32, textAlign: "center", color: "var(--tm)", fontSize: 13 }}>ไม่มีคลาสในช่วงเวลานี้</div>
+                  ) : (
+                    <table>
+                      <thead>
+                        <tr>
+                          <th><input type="checkbox" checked={selectedIn.size === incoming.length && incoming.length > 0} onChange={(e) => toggleAllIn(e.target.checked)} /></th>
+                          <th>วัน/เวลา</th>
+                          <th>สนาม</th>
+                          <th>โค้ช</th>
+                          <th>แพ็กเกจ</th>
+                          <th>ผู้จอง</th>
+                          <th>Waitlist</th>
+                          <th>สถานะ</th>
+                          <th>Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {incoming.map((cls) => (
+                          <tr key={cls.id}>
+                            <td><input type="checkbox" checked={selectedIn.has(cls.id)} onChange={() => toggleIncoming(cls.id)} /></td>
+                            <td>
+                              <div style={{ fontSize: 12, fontWeight: 600 }}>{cls.dayLabel}</div>
+                              <div style={{ fontSize: 10, color: "var(--tm)", fontFamily: "'JetBrains Mono', monospace" }}>
+                                {cls.timeStart}–{cls.timeEnd}
+                              </div>
+                            </td>
+                            <td style={{ fontSize: 12 }}>{cls.venue}</td>
+                            <td style={{ fontSize: 12 }}>{cls.coach || "—"}</td>
+                            <td>{pkgBadge(cls.packageFilter)}</td>
+                            <td><ProgressBar value={cls.booked} max={cls.capacity} /></td>
+                            <td className="pk-mono">{cls.waitlist}</td>
+                            <td>{statusBadge(cls.status)}</td>
+                            <td>
+                              <div style={{ display: "flex", gap: 5 }}>
+                                <Button variant="ghost" size="sm" onClick={() => openIncomingDetail(cls)}>ดู/จัดการ</Button>
+                                <Button variant="ghost" size="sm" onClick={() => openEdit(cls)}>แก้ไข</Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </>
               )}
 
+              {/* ── HISTORY ── */}
               {tab === "history" && (
                 <>
                   <div style={{ display: "flex", gap: 7, padding: "10px 14px", borderBottom: "1px solid var(--bd)", flexWrap: "wrap", alignItems: "center", background: "var(--card-h)" }}>
-                    {["ทุกสนาม", "ทุกโค้ช", "ทุกแพ็ก", "ทุกสถานะ"].map((opt, i) => (
-                      <select key={i} style={{ padding: "5px 9px", background: "var(--bg)", border: "1.5px solid var(--bd2)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 11, cursor: "pointer", outline: "none" }}>
-                        <option>{opt}</option>
-                      </select>
-                    ))}
+                    <select value={filterVenue} onChange={(e) => setFilterVenue(e.target.value)}
+                      style={{ padding: "5px 9px", background: "var(--bg)", border: "1.5px solid var(--bd2)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 11, cursor: "pointer", outline: "none" }}>
+                      <option value="">ทุกสนาม</option>
+                      {venues.map((v) => <option key={v}>{v}</option>)}
+                    </select>
+                    <select value={filterCoach} onChange={(e) => setFilterCoach(e.target.value)}
+                      style={{ padding: "5px 9px", background: "var(--bg)", border: "1.5px solid var(--bd2)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 11, cursor: "pointer", outline: "none" }}>
+                      <option value="">ทุกโค้ช</option>
+                      {coaches.map((c) => <option key={c}>{c}</option>)}
+                    </select>
+                    <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}
+                      style={{ padding: "5px 9px", background: "var(--bg)", border: "1.5px solid var(--bd2)", borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 11, cursor: "pointer", outline: "none" }}>
+                      <option value="">ทุกสถานะ</option>
+                      <option value="completed">Completed</option>
+                      <option value="cancelled">Cancelled</option>
+                    </select>
                     <div style={{ marginLeft: "auto" }}>
                       {selectedHist.size > 0 && (
                         <Button variant="ghost" size="sm" onClick={() => setModal("export")}>
@@ -181,40 +310,49 @@ export default function ClassesPage() {
                     </div>
                   </div>
 
-                  <table>
-                    <thead>
-                      <tr>
-                        <th><input type="checkbox" checked={selectedHist.size === HISTORY_CLASSES.length} onChange={(e) => toggleAllHist(e.target.checked)} /></th>
-                        <th>วัน/เวลา</th><th>สนาม</th><th>โค้ช</th><th>เข้าเรียน</th><th>No-show</th><th>สถานะ</th><th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {HISTORY_CLASSES.map((cls) => {
-                        const detail = cls.id === "hcs-1" ? { attended: 10, noshow: 2 } : cls.id === "hcs-2" ? { attended: 18, noshow: 2 } : null;
-                        return (
+                  {loading ? (
+                    <div style={{ padding: 32, textAlign: "center", color: "var(--tm)", fontSize: 13 }}>กำลังโหลด...</div>
+                  ) : history.length === 0 ? (
+                    <div style={{ padding: 32, textAlign: "center", color: "var(--tm)", fontSize: 13 }}>ไม่มีประวัติคลาสในช่วงเวลานี้</div>
+                  ) : (
+                    <table>
+                      <thead>
+                        <tr>
+                          <th><input type="checkbox" checked={selectedHist.size === history.length && history.length > 0} onChange={(e) => toggleAllHist(e.target.checked)} /></th>
+                          <th>วัน/เวลา</th>
+                          <th>สนาม</th>
+                          <th>โค้ช</th>
+                          <th>ผู้จอง</th>
+                          <th>สถานะ</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {history.map((cls) => (
                           <tr key={cls.id}>
                             <td><input type="checkbox" checked={selectedHist.has(cls.id)} onChange={() => toggleHistory(cls.id)} /></td>
                             <td>
                               <div style={{ fontSize: 12, fontWeight: 600 }}>{cls.dayLabel}</div>
-                              <div style={{ fontSize: 10, color: "var(--tm)", fontFamily: "'JetBrains Mono', monospace" }}>{cls.timeStart}–{cls.timeEnd}</div>
+                              <div style={{ fontSize: 10, color: "var(--tm)", fontFamily: "'JetBrains Mono', monospace" }}>
+                                {cls.timeStart}–{cls.timeEnd}
+                              </div>
                             </td>
-                            <td>{cls.venue}</td>
-                            <td>{cls.coach}</td>
-                            <td className="pk-mono" style={{ color: detail ? "var(--green)" : "var(--tm)", fontWeight: 700 }}>
-                              {detail ? detail.attended : "—"}
-                            </td>
-                            <td className="pk-mono" style={{ color: detail ? "var(--red)" : "var(--tm)", fontWeight: 700 }}>
-                              {detail ? detail.noshow : "—"}
+                            <td style={{ fontSize: 12 }}>{cls.venue}</td>
+                            <td style={{ fontSize: 12 }}>{cls.coach || "—"}</td>
+                            <td>
+                              <ProgressBar value={cls.booked} max={cls.capacity} />
                             </td>
                             <td>{statusBadge(cls.status)}</td>
                             <td>
-                              <Button variant="ghost" size="sm" onClick={() => setModal("history-detail")}>ดูบันทึก</Button>
+                              <Button variant="ghost" size="sm" onClick={() => openHistoryDetail(cls)}>
+                                ดูบันทึก
+                              </Button>
                             </td>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </>
               )}
             </>
@@ -222,12 +360,45 @@ export default function ClassesPage() {
         </Tabs>
       </Card>
 
-      {/* Modals */}
-      <CreateClassModal open={modal === "create"} onClose={() => setModal("none")} />
-      <EditClassModal open={modal === "edit"} onClose={() => setModal("none")} />
-      <IncomingDetailModal open={modal === "incoming-detail"} onClose={() => setModal("none")} />
-      <HistoryDetailModal open={modal === "history-detail"} onClose={() => setModal("none")} />
-      <ExportClassesModal open={modal === "export"} onClose={() => setModal("none")} />
+      {/* ── Modals ── */}
+      <CreateClassModal
+        open={modal === "create"}
+        onClose={() => setModal("none")}
+        onCreated={() => { load(); setModal("none"); }}
+      />
+
+      {/* key forces re-mount so form is reset when switching edit targets */}
+      <EditClassModal
+        key={editTarget?.id ?? "edit-none"}
+        open={modal === "edit"}
+        onClose={() => { setModal("none"); setEditTarget(null); }}
+        cls={editTarget}
+        onSaved={(updated) => {
+          setClasses((prev) => prev.map((c) => c.id === updated.id ? updated : c));
+        }}
+        onCancelled={(id) => {
+          setClasses((prev) => prev.map((c) => c.id === id ? { ...c, status: "cancelled" } : c));
+        }}
+      />
+
+      <IncomingDetailModal
+        key={detailTarget?.id ?? "detail-none"}
+        open={modal === "incoming-detail"}
+        onClose={() => { setModal("none"); setDetailTarget(null); }}
+        cls={detailTarget}
+      />
+
+      <HistoryDetailModal
+        key={`hist-${detailTarget?.id ?? "none"}`}
+        open={modal === "history-detail"}
+        onClose={() => { setModal("none"); setDetailTarget(null); }}
+        cls={detailTarget}
+      />
+
+      <ExportClassesModal
+        open={modal === "export"}
+        onClose={() => setModal("none")}
+      />
     </>
   );
 }
