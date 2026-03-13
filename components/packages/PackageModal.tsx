@@ -17,20 +17,19 @@ interface PackageModalProps {
 export function PackageModal({ open, onClose, mode, initial, onSuccess }: PackageModalProps) {
   const { showToast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [extraEnabled, setExtraEnabled] = useState(initial ? initial.extraLimit > 0 : true);
 
   const [form, setForm] = useState({
     category: initial?.category ?? "Adult" as PackageCategory,
     name: initial?.name ?? "",
-    description: initial?.description ?? "",
     price: initial?.price ?? "",
     durationDays: initial?.durationDays ?? "",
     sessions: initial?.sessions ?? "",
-    extraLimit: initial?.extraLimit ?? "",
+    extraEnabled: initial?.extraEnabled ?? true,
+    extraLimit: initial?.extraLimit ?? 2,
     extraPrice: initial?.extraPrice ?? "",
   });
 
-  function set(field: string, value: string | number) {
+  function set(field: string, value: string | number | boolean) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
@@ -40,12 +39,12 @@ export function PackageModal({ open, onClose, mode, initial, onSuccess }: Packag
       const payload = {
         category: form.category as PackageCategory,
         name: form.name,
-        description: form.description || undefined,
         price: Number(form.price),
         durationDays: Number(form.durationDays),
         sessions: Number(form.sessions),
-        extraLimit: extraEnabled ? Number(form.extraLimit) : 0,
-        extraPrice: extraEnabled ? Number(form.extraPrice) : 0,
+        extraEnabled: form.extraEnabled,
+        extraLimit: form.extraEnabled ? Number(form.extraLimit) : 0,
+        extraPrice: form.extraEnabled ? Number(form.extraPrice) : 0,
       };
 
       if (mode === "create") {
@@ -123,13 +122,6 @@ export function PackageModal({ open, onClose, mode, initial, onSuccess }: Packag
             placeholder="เช่น Pro Pack"
           />
         </FormItem>
-        <FormItem label="รายละเอียด (optional)" full>
-          <textarea
-            value={form.description}
-            onChange={(e) => set("description", e.target.value)}
-            placeholder="คำอธิบายสั้น ๆ..."
-          />
-        </FormItem>
         <FormItem label="ราคา (฿)" full>
           <input
             type="number"
@@ -158,23 +150,27 @@ export function PackageModal({ open, onClose, mode, initial, onSuccess }: Packag
         <FormSection>Extra Session</FormSection>
 
         <FormItem label="เปิดให้ซื้อ Extra?" full>
-          <select value={extraEnabled ? "yes" : "no"} onChange={(e) => setExtraEnabled(e.target.value === "yes")}>
+          <select
+            value={form.extraEnabled ? "yes" : "no"}
+            onChange={(e) => set("extraEnabled", e.target.value === "yes")}
+          >
             <option value="yes">✅ เปิด</option>
             <option value="no">❌ ปิด</option>
           </select>
         </FormItem>
 
-        {extraEnabled && (
+        {form.extraEnabled && (
           <>
-            <FormItem label="Extra Limit (ครั้ง)">
+            <FormItem label="ซื้อได้สูงสุด (ครั้ง)">
               <input
                 type="number"
                 value={form.extraLimit}
                 onChange={(e) => set("extraLimit", e.target.value)}
                 placeholder="2"
+                min={1}
               />
             </FormItem>
-            <FormItem label="Extra Price (฿)">
+            <FormItem label="ราคา Extra/ครั้ง (฿)">
               <input
                 type="number"
                 value={form.extraPrice}

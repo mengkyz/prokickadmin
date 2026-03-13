@@ -66,7 +66,7 @@ export default function PackagesPage() {
               <td className="pk-mono" style={{ color: "var(--orange)" }}>{pkg.price.toLocaleString()} ฿</td>
               <td className="pk-mono">{pkg.sessions}</td>
               <td className="pk-mono">{pkg.durationDays}</td>
-              <td className="pk-mono">{pkg.extraLimit > 0 ? `${pkg.extraLimit}×${pkg.extraPrice}฿` : "—"}</td>
+              <td className="pk-mono">{pkg.extraEnabled ? `${pkg.extraLimit}×${pkg.extraPrice}฿` : "—"}</td>
               <td>
                 <Button variant="ghost" size="sm" onClick={() => openEdit(pkg)}>แก้ไข</Button>
               </td>

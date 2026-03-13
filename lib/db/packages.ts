@@ -1,44 +1,45 @@
 import { supabase } from "@/lib/supabase";
-import type { Package } from "@/lib/types";
+import type { Package, PackageCategory } from "@/lib/types";
 
-// ── DB row type (snake_case columns in Supabase) ──────────
+// ── Actual Supabase table columns ────────────────────────
 interface PackageTemplateRow {
-  id: string;
+  id: number;
   name: string;
-  category: "Adult" | "Junior";
+  type: "adult" | "junior";
+  session_count: number;
+  days_valid: number;
   price: number;
-  sessions: number;
-  duration_days: number;
-  extra_limit: number;
-  extra_price: number;
-  description: string | null;
-  created_at?: string;
+  extra_session_enabled: boolean;
+  extra_session_limit: number;
+  extra_session_price: number;
 }
 
 function rowToPackage(row: PackageTemplateRow): Package {
+  const category: PackageCategory =
+    row.type === "adult" ? "Adult" : "Junior";
   return {
-    id: row.id,
+    id: String(row.id),
     name: row.name,
-    category: row.category,
+    category,
     price: row.price,
-    sessions: row.sessions,
-    durationDays: row.duration_days,
-    extraLimit: row.extra_limit,
-    extraPrice: row.extra_price,
-    description: row.description ?? undefined,
+    sessions: row.session_count,
+    durationDays: row.days_valid,
+    extraEnabled: row.extra_session_enabled,
+    extraLimit: row.extra_session_limit,
+    extraPrice: row.extra_session_price,
   };
 }
 
-function packageToRow(pkg: Omit<Package, "id">): Omit<PackageTemplateRow, "id" | "created_at"> {
+function packageToRow(pkg: Omit<Package, "id">) {
   return {
     name: pkg.name,
-    category: pkg.category,
+    type: pkg.category.toLowerCase() as "adult" | "junior",
+    session_count: pkg.sessions,
+    days_valid: pkg.durationDays,
     price: pkg.price,
-    sessions: pkg.sessions,
-    duration_days: pkg.durationDays,
-    extra_limit: pkg.extraLimit,
-    extra_price: pkg.extraPrice,
-    description: pkg.description ?? null,
+    extra_session_enabled: pkg.extraEnabled,
+    extra_session_limit: pkg.extraLimit,
+    extra_session_price: pkg.extraPrice,
   };
 }
 
@@ -47,7 +48,7 @@ export async function fetchPackages(): Promise<Package[]> {
   const { data, error } = await supabase
     .from("package_templates")
     .select("*")
-    .order("category")
+    .order("type")
     .order("price");
 
   if (error) throw new Error(error.message);
@@ -71,7 +72,7 @@ export async function updatePackage(id: string, pkg: Omit<Package, "id">): Promi
   const { data, error } = await supabase
     .from("package_templates")
     .update(packageToRow(pkg))
-    .eq("id", id)
+    .eq("id", Number(id))
     .select()
     .single();
 
@@ -84,7 +85,7 @@ export async function deletePackage(id: string): Promise<void> {
   const { error } = await supabase
     .from("package_templates")
     .delete()
-    .eq("id", id);
+    .eq("id", Number(id));
 
   if (error) throw new Error(error.message);
 }
