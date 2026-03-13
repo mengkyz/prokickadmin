@@ -45,9 +45,9 @@ export interface Package {
   price: number;
   sessions: number;
   durationDays: number;
+  extraEnabled: boolean;
   extraLimit: number;
   extraPrice: number;
-  description?: string;
 }
 
 export interface PackageAssignment {

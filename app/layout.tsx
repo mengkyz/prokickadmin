@@ -23,7 +23,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="th">
+    <html lang="th" suppressHydrationWarning>
       <body className={`${plusJakartaSans.variable} ${jetBrainsMono.variable}`}>
         {children}
       </body>
