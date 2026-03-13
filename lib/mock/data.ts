@@ -5,11 +5,11 @@ import type {
 
 // ── Packages ──────────────────────────────────────────────
 export const PACKAGES: Package[] = [
-  { id: "pkg-1", name: "Fun Pack", category: "Adult", price: 1800, sessions: 4, durationDays: 30, extraLimit: 2, extraPrice: 450 },
-  { id: "pkg-2", name: "Pro Pack", category: "Adult", price: 2800, sessions: 8, durationDays: 40, extraLimit: 2, extraPrice: 300 },
-  { id: "pkg-3", name: "Elite Pack", category: "Adult", price: 4500, sessions: 16, durationDays: 60, extraLimit: 2, extraPrice: 250 },
-  { id: "pkg-4", name: "First Step", category: "Junior", price: 1400, sessions: 4, durationDays: 30, extraLimit: 2, extraPrice: 350 },
-  { id: "pkg-5", name: "Happy Kicks", category: "Junior", price: 2200, sessions: 7, durationDays: 40, extraLimit: 2, extraPrice: 350 },
+  { id: "pkg-1", name: "Fun Pack", category: "Adult", price: 1800, sessions: 4, durationDays: 30, extraEnabled: true, extraLimit: 2, extraPrice: 450 },
+  { id: "pkg-2", name: "Pro Pack", category: "Adult", price: 2800, sessions: 8, durationDays: 40, extraEnabled: true, extraLimit: 2, extraPrice: 300 },
+  { id: "pkg-3", name: "Elite Pack", category: "Adult", price: 4500, sessions: 16, durationDays: 60, extraEnabled: true, extraLimit: 2, extraPrice: 250 },
+  { id: "pkg-4", name: "First Step", category: "Junior", price: 1400, sessions: 4, durationDays: 30, extraEnabled: true, extraLimit: 2, extraPrice: 350 },
+  { id: "pkg-5", name: "Happy Kicks", category: "Junior", price: 2200, sessions: 7, durationDays: 40, extraEnabled: true, extraLimit: 2, extraPrice: 350 },
 ];
 
 // ── Users ─────────────────────────────────────────────────

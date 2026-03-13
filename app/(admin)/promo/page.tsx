@@ -1,16 +1,55 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge, BadgeVariant } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Modal, FormGrid, FormItem, DefaultFooter } from "@/components/ui/Modal";
+import { PromoModal } from "@/components/promo/PromoModal";
+import { fetchPromos, togglePromoActive } from "@/lib/db/promos";
 import { useToast } from "@/lib/context/ToastContext";
-import { PROMO_CODES } from "@/lib/mock/data";
+import type { PromoCode } from "@/lib/types";
 
 export default function PromoPage() {
   const { showToast } = useToast();
-  const [createOpen, setCreateOpen] = useState(false);
+  const [promos, setPromos] = useState<PromoCode[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState<"none" | "create" | "edit">("none");
+  const [editTarget, setEditTarget] = useState<PromoCode | undefined>();
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await fetchPromos();
+      setPromos(data);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ");
+    } finally {
+      setLoading(false);
+    }
+  }, [showToast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  function openEdit(promo: PromoCode) {
+    setEditTarget(promo);
+    setModal("edit");
+  }
+
+  function openCreate() {
+    setEditTarget(undefined);
+    setModal("create");
+  }
+
+  async function handleToggle(promo: PromoCode) {
+    const nextActive = promo.status === "Inactive";
+    try {
+      await togglePromoActive(promo.id, nextActive);
+      showToast(nextActive ? "เปิดโค้ดแล้ว" : "ปิดโค้ดแล้ว");
+      load();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
+    }
+  }
 
   const statusVariant: Record<string, BadgeVariant> = {
     Active: "green",
@@ -18,78 +57,102 @@ export default function PromoPage() {
     Inactive: "gray",
   };
 
+  const statusLabel: Record<string, string> = {
+    Active: "● Active",
+    Expiring: "⚠ Expiring",
+    Inactive: "Inactive",
+  };
+
+  // Format ISO date (YYYY-MM-DD) to DD/MM/YY for display
+  function fmtDate(iso: string) {
+    if (!iso) return "—";
+    const [y, m, d] = iso.split("-");
+    return `${d}/${m}/${y.slice(2)}`;
+  }
+
   return (
     <>
       <Card>
         <CardHeader
           icon="🏷️"
           title="โปรโมชั่นโค้ด"
-          actions={<Button variant="primary" size="sm" onClick={() => setCreateOpen(true)}>+ สร้างโค้ด</Button>}
+          actions={<Button variant="primary" size="sm" onClick={openCreate}>+ สร้างโค้ด</Button>}
         />
-        <table>
-          <thead>
-            <tr><th>โค้ด</th><th>ส่วนลด</th><th>ใช้แล้ว</th><th>หมดอายุ</th><th>สถานะ</th><th>Actions</th></tr>
-          </thead>
-          <tbody>
-            {PROMO_CODES.map((promo) => (
-              <tr key={promo.id}>
-                <td>
-                  <span style={{ display: "inline-flex", background: "var(--purple-l)", border: "1px solid #DDD6FE", borderRadius: 5, padding: "2px 8px", fontSize: 11, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--purple)" }}>
-                    {promo.code}
-                  </span>
-                </td>
-                <td className="pk-mono" style={{ color: "var(--green)" }}>
-                  {promo.discountType === "percent" ? `${promo.discount}%` : `${promo.discount} ฿`}
-                </td>
-                <td className="pk-mono">{promo.usedCount}/{promo.usageLimit}</td>
-                <td className="pk-mono">{promo.expiresAt}</td>
-                <td><Badge variant={statusVariant[promo.status]}>
-                  {promo.status === "Active" ? "● Active" : promo.status === "Expiring" ? "⚠ Expiring" : promo.status}
-                </Badge></td>
-                <td>
-                  <div style={{ display: "flex", gap: 5 }}>
-                    <Button variant="ghost" size="sm">แก้ไข</Button>
-                    <Button variant="danger" size="sm" onClick={() => showToast("ปิดโค้ดแล้ว", "error")}>ปิด</Button>
-                  </div>
-                </td>
+        {loading ? (
+          <div style={{ textAlign: "center", padding: "32px 0", color: "var(--t3)", fontSize: 14 }}>
+            กำลังโหลด...
+          </div>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>โค้ด</th>
+                <th>ส่วนลด</th>
+                <th>ใช้แล้ว</th>
+                <th>หมดอายุ</th>
+                <th>สถานะ</th>
+                <th></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {promos.length === 0 ? (
+                <tr>
+                  <td colSpan={6} style={{ textAlign: "center", color: "var(--t3)", padding: "20px 0", fontSize: 13 }}>
+                    ยังไม่มีโปรโมชั่นโค้ด
+                  </td>
+                </tr>
+              ) : (
+                promos.map((promo) => (
+                  <tr key={promo.id}>
+                    <td>
+                      <span style={{ display: "inline-flex", background: "var(--purple-l)", border: "1px solid #DDD6FE", borderRadius: 5, padding: "2px 8px", fontSize: 11, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--purple)" }}>
+                        {promo.code}
+                      </span>
+                    </td>
+                    <td className="pk-mono" style={{ color: "var(--green)" }}>
+                      {promo.discountType === "percent" ? `${promo.discount}%` : `${promo.discount} ฿`}
+                    </td>
+                    <td className="pk-mono">{promo.usedCount}/{promo.usageLimit}</td>
+                    <td className="pk-mono">{fmtDate(promo.expiresAt)}</td>
+                    <td>
+                      <Badge variant={statusVariant[promo.status]}>
+                        {statusLabel[promo.status]}
+                      </Badge>
+                    </td>
+                    <td>
+                      <div style={{ display: "flex", gap: 5 }}>
+                        <Button variant="ghost" size="sm" onClick={() => openEdit(promo)}>แก้ไข</Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => handleToggle(promo)}
+                        >
+                          {promo.status === "Inactive" ? "เปิด" : "ปิด"}
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        )}
       </Card>
 
-      {/* Create Promo Modal */}
-      <Modal
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        title="🏷️ สร้างโปรโมชั่นโค้ด"
-        width={440}
-        footer={
-          <DefaultFooter
-            onCancel={() => setCreateOpen(false)}
-            onConfirm={() => { setCreateOpen(false); showToast("สร้างโค้ดแล้ว!"); }}
-            confirmLabel="สร้าง"
-          />
-        }
-      >
-        <FormGrid>
-          <FormItem label="โค้ด" full>
-            <input type="text" placeholder="เช่น SUMMER2025" style={{ textTransform: "uppercase" }} />
-          </FormItem>
-          <FormItem label="ประเภทส่วนลด" full>
-            <select><option>เปอร์เซ็นต์ (%)</option><option>จำนวนเงิน (฿)</option></select>
-          </FormItem>
-          <FormItem label="ส่วนลด">
-            <input type="number" placeholder="10" />
-          </FormItem>
-          <FormItem label="จำนวนการใช้ (สูงสุด)">
-            <input type="number" placeholder="100" />
-          </FormItem>
-          <FormItem label="วันหมดอายุ" full>
-            <input type="date" />
-          </FormItem>
-        </FormGrid>
-      </Modal>
+      <PromoModal
+        open={modal === "create"}
+        onClose={() => setModal("none")}
+        mode="create"
+        onSuccess={load}
+      />
+      <PromoModal
+        key={editTarget?.id}
+        open={modal === "edit"}
+        onClose={() => setModal("none")}
+        mode="edit"
+        initial={editTarget}
+        onSuccess={load}
+      />
     </>
   );
 }
