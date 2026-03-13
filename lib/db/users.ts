@@ -389,10 +389,11 @@ export async function fetchUserBookings(userId: string, childId?: string | null)
   const { data, error } = await query;
   if (error) throw new Error(error.message);
 
-  return (data as BookingRow[]).map((b) => {
-    const cls = b.classes;
-    const start = cls ? new Date(cls.start_time) : null;
-    const end   = cls ? new Date(cls.end_time) : null;
+  return (data as unknown as BookingRow[]).map((b) => {
+    const clsRaw = b.classes as unknown;
+    const cls = Array.isArray(clsRaw) ? (clsRaw[0] ?? null) : (clsRaw ?? null);
+    const start = cls ? new Date((cls as { start_time: string }).start_time) : null;
+    const end   = cls ? new Date((cls as { end_time: string }).end_time) : null;
     const timeStr = start && end
       ? `${start.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", hour12: false })}–${end.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", hour12: false })}`
       : "—";
@@ -404,7 +405,7 @@ export async function fetchUserBookings(userId: string, childId?: string | null)
     return {
       id: b.id,
       date: dateStr,
-      venue: cls?.location ?? "—",
+      venue: (cls as { location?: string } | null)?.location ?? "—",
       time: timeStr,
       attendanceStatus: att,
       status: b.status,
