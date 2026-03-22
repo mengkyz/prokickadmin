@@ -14,6 +14,7 @@ interface ProgressBarProps {
   max: number;
   color?: BarColor;
   showLabel?: boolean;
+  label?: string; // override the default "value/max" label
 }
 
 function resolveColor(value: number, max: number): BarColor {
@@ -23,7 +24,7 @@ function resolveColor(value: number, max: number): BarColor {
   return "green";
 }
 
-export function ProgressBar({ value, max, color, showLabel = true }: ProgressBarProps) {
+export function ProgressBar({ value, max, color, showLabel = true, label }: ProgressBarProps) {
   const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
   const resolvedColor = color ?? resolveColor(value, max);
 
@@ -58,7 +59,7 @@ export function ProgressBar({ value, max, color, showLabel = true }: ProgressBar
             textAlign: "right",
           }}
         >
-          {value}/{max}
+          {label ?? `${value}/${max}`}
         </span>
       )}
     </div>
