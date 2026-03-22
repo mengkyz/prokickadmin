@@ -497,9 +497,18 @@ export async function fetchAdminLogs(userId: string, childId?: string | null): P
     let detail = log.note ?? "";
 
     if (log.action === "adjust_sessions") {
-      const d = log.delta_sessions ?? 0;
-      dotColor = d >= 0 ? "var(--green)" : "var(--red)";
-      actionLabel = d >= 0 ? `เพิ่ม Sessions +${d}` : `หัก Sessions ${d}`;
+      const dS = log.delta_sessions ?? 0;
+      const dE = log.delta_extra ?? 0;
+      const parts: string[] = [];
+      if (dS !== 0) parts.push(dS > 0 ? `Sessions +${dS}` : `Sessions ${dS}`);
+      if (dE !== 0) parts.push(dE > 0 ? `Extra +${dE}` : `Extra ${dE}`);
+      if (parts.length === 0) {
+        dotColor = "var(--blue)";
+        actionLabel = "ปรับ Sessions/Extra";
+      } else {
+        dotColor = (dS + dE) >= 0 ? "var(--green)" : "var(--red)";
+        actionLabel = parts.join("  ·  ");
+      }
     } else if (log.action === "activate_package") {
       dotColor = "var(--green)";
       actionLabel = "เปิดใช้แพ็กเกจ";
@@ -511,7 +520,7 @@ export async function fetchAdminLogs(userId: string, childId?: string | null): P
       actionLabel = "ต่ออายุแพ็กเกจ";
     } else if (log.action === "profile_update") {
       dotColor = "var(--blue)";
-      actionLabel = "แก้ไขข้อมูลผู้ใช้";
+      actionLabel = log.target_type === "child_profile" ? "แก้ไขข้อมูลนักเรียน" : "แก้ไขข้อมูลผู้ใช้";
     } else if (log.action === "insert_package") {
       dotColor = "var(--green)";
       actionLabel = "เพิ่มแพ็กเกจ";
