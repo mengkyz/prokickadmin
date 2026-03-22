@@ -44,8 +44,6 @@ interface UserPackageRow {
   expiry_date: string;
   status: string;
   notes: string | null;
-  paused_from: string | null;
-  paused_until: string | null;
   created_at: string;
   // joined
   package_templates?: {
@@ -110,8 +108,6 @@ export interface AdminPackage {
   extraSessionLimit: number;
   extraSessionPrice: number;
   extraEnabled: boolean;
-  pausedFrom: string | null;
-  pausedUntil: string | null;
   status: string;
   notes: string;
 }
@@ -196,8 +192,6 @@ function rowToPackage(row: UserPackageRow): AdminPackage {
     extraSessionLimit: tmpl?.extra_session_limit ?? 2,
     extraSessionPrice: tmpl?.extra_session_price ?? 0,
     extraEnabled: tmpl?.extra_session_enabled ?? false,
-    pausedFrom: row.paused_from ?? null,
-    pausedUntil: row.paused_until ?? null,
     status: row.status,
     notes: row.notes ?? "",
   };
