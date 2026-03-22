@@ -199,7 +199,6 @@ export default function UsersPage() {
                 <th>ประเภท</th>
                 <th>แพ็กเกจ</th>
                 <th>Sessions</th>
-                <th>Extra</th>
                 <th>สถานะ</th>
                 <th>หมดอายุ</th>
                 <th>Actions</th>
@@ -208,7 +207,7 @@ export default function UsersPage() {
             <tbody>
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={9} style={{ textAlign: "center", padding: 32, color: "var(--tm)", fontSize: 13 }}>
+                  <td colSpan={8} style={{ textAlign: "center", padding: 32, color: "var(--tm)", fontSize: 13 }}>
                     ไม่พบข้อมูล
                   </td>
                 </tr>
@@ -273,13 +272,11 @@ export default function UsersPage() {
                         />
                       ) : <span style={{ color: "var(--tm)", fontSize: 11 }}>—</span>}
                     </td>
-                    <td className="pk-mono">
-                      {dispPkg ? (dispPkg.extraSessionsPurchased > 0 ? `+${dispPkg.extraSessionsPurchased}` : "—") : "—"}
-                    </td>
                     <td>
                       <Badge variant={statusVariant[user.status] ?? "gray"}>
                         {user.status === "Active" ? "● Active"
                           : user.status === "Low" ? "⚠ Low"
+                          : user.status === "Expired" ? "● Expired"
                           : user.status}
                       </Badge>
                     </td>
@@ -338,13 +335,11 @@ export default function UsersPage() {
                           />
                         ) : <span style={{ color: "var(--tm)", fontSize: 11 }}>—</span>}
                       </td>
-                      <td className="pk-mono">
-                        {cDispPkg ? (cDispPkg.extraSessionsPurchased > 0 ? `+${cDispPkg.extraSessionsPurchased}` : "—") : "—"}
-                      </td>
                       <td>
                         <Badge variant={statusVariant[child.status] ?? "gray"}>
                           {child.status === "Active" ? "● Active"
                             : child.status === "Low" ? "⚠ Low"
+                            : child.status === "Expired" ? "● Expired"
                             : child.status}
                         </Badge>
                       </td>

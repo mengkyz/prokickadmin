@@ -236,11 +236,20 @@ function rowToAdminUser(
   // Status is derived from the most recent ACTIVE package only
   const activePkgRow = ownPkgRows.find((p) => p.status === "active") ?? null;
   const activePkgForStatus = activePkgRow ? rowToPackage(activePkgRow) : null;
-  const status = deriveStatus(activePkgForStatus);
+  // "Expired" if user has packages but none are active; "No Package" if never bought
+  const status: UserStatus = activePkgForStatus
+    ? deriveStatus(activePkgForStatus)
+    : ownPkgRows.some((p) => p.status === "expired")
+      ? "Expired"
+      : ownPkgRows.some((p) => p.status === "inactive")
+        ? "No Package"
+        : "No Package";
 
-  // Display package: most recent active → inactive → null
+  // Display package: most recent active → inactive → null (excludes expired from switcher)
   const displayPkg = pickDisplayPkg(ownPkgRows);
-  const ownPackages = ownPkgRows.map(rowToPackage);
+  const ownPackages = ownPkgRows
+    .filter((p) => p.status === "active" || p.status === "inactive")
+    .map(rowToPackage);
 
   // Derive types
   const types: string[] = [];
@@ -294,10 +303,17 @@ function rowToAdminChild(
     .filter((p) => p.child_id === row.id)
     .sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
   const displayPkg = pickDisplayPkg(childPkgRows);
-  const ownPackages = childPkgRows.map(rowToPackage);
-  // Status from most recent active only
+  const ownPackages = childPkgRows
+    .filter((p) => p.status === "active" || p.status === "inactive")
+    .map(rowToPackage);
+  // Status from most recent active only; expired packages → "Expired" not "No Package"
   const activePkgRow = childPkgRows.find((p) => p.status === "active") ?? null;
   const activePkgForStatus = activePkgRow ? rowToPackage(activePkgRow) : null;
+  const childStatus: UserStatus = activePkgForStatus
+    ? deriveStatus(activePkgForStatus)
+    : childPkgRows.some((p) => p.status === "expired")
+      ? "Expired"
+      : "No Package";
   return {
     id: row.id,
     parentId: row.parent_id,
@@ -310,7 +326,7 @@ function rowToAdminChild(
     adminNotes: row.admin_notes,
     activePackage: displayPkg,
     ownPackages,
-    status: deriveStatus(activePkgForStatus),
+    status: childStatus,
     expiresAt: activePkgForStatus?.expiryDate ?? null,
     createdAt: row.created_at,
     avatarColor: avatarColor(row.nickname),
@@ -335,11 +351,11 @@ export async function fetchUsers(): Promise<AdminUser[]> {
     .select("*");
   if (ce) throw new Error(ce.message);
 
-  // Fetch active + inactive packages (not expired) with template info, newest first
+  // Fetch all packages (active/inactive/expired) with template info, newest first
+  // We need expired ones to correctly distinguish "Expired" status from "No Package"
   const { data: packages, error: pke } = await sb
     .from("user_packages")
     .select("*, package_templates(name, session_count, type, extra_session_enabled, extra_session_limit, extra_session_price)")
-    .in("status", ["active", "inactive"])
     .order("start_date", { ascending: false });
   if (pke) throw new Error(pke.message);
 
