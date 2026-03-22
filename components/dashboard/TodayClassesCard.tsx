@@ -6,24 +6,39 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { IncomingDetailModal } from "@/components/classes/IncomingDetailModal";
-import { TODAY_CLASSES } from "@/lib/mock/data";
+import type { AdminClass } from "@/lib/db/classes";
 
-type ClassStatus = "open" | "full" | "waitlist";
-
-const statusBorderColor: Record<ClassStatus, string> = {
-  open: "var(--green)",
-  full: "var(--red)",
-  waitlist: "var(--orange)",
+const borderColor: Record<string, string> = {
+  open:      "var(--green)",
+  full:      "var(--red)",
+  waitlist:  "var(--orange)",
+  completed: "var(--bd2)",
+  cancelled: "var(--bd2)",
 };
 
-const statusCapColor: Record<ClassStatus, string> = {
-  open: "var(--green)",
-  full: "var(--red)",
-  waitlist: "var(--orange)",
+const countColor: Record<string, string> = {
+  open:      "var(--green)",
+  full:      "var(--red)",
+  waitlist:  "var(--orange)",
+  completed: "var(--tm)",
+  cancelled: "var(--tm)",
 };
 
-export function TodayClassesCard() {
-  const [detailOpen, setDetailOpen] = useState(false);
+const pkgLabel: Record<string, string> = {
+  all:    "ทุกแพ็กเกจ",
+  adult:  "Adult",
+  junior: "Junior",
+};
+
+interface Props {
+  classes: AdminClass[] | null;
+  loading?: boolean;
+}
+
+export function TodayClassesCard({ classes, loading }: Props) {
+  const [selected, setSelected] = useState<AdminClass | null>(null);
+
+  const visible = (classes ?? []).filter((c) => c.status !== "cancelled");
 
   return (
     <>
@@ -37,38 +52,57 @@ export function TodayClassesCard() {
             </Link>
           }
         />
+
         <div style={{ display: "flex", flexDirection: "column", gap: 7, padding: 12 }}>
-          {TODAY_CLASSES.map((cls, i) => (
+          {loading && (
+            <div style={{ textAlign: "center", padding: 20, color: "var(--tm)", fontSize: 12 }}>
+              กำลังโหลด...
+            </div>
+          )}
+
+          {!loading && visible.length === 0 && (
+            <div style={{ textAlign: "center", padding: 20, color: "var(--tm)", fontSize: 12 }}>
+              ไม่มีคลาสวันนี้
+            </div>
+          )}
+
+          {!loading && visible.map((cls) => (
             <div
-              key={i}
-              onClick={() => setDetailOpen(true)}
+              key={cls.id}
+              onClick={() => setSelected(cls)}
               style={{
                 background: "var(--bg)",
                 border: "1.5px solid var(--bd)",
-                borderLeft: `4px solid ${statusBorderColor[cls.status]}`,
+                borderLeft: `4px solid ${borderColor[cls.status] ?? "var(--bd2)"}`,
                 borderRadius: 8,
                 padding: "10px 12px",
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
                 cursor: "pointer",
-                transition: "all 0.12s",
+                opacity: cls.status === "completed" ? 0.6 : 1,
+                transition: "opacity 0.12s",
               }}
             >
-              <div style={{ fontSize: 11, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", minWidth: 96 }}>
-                {cls.time}
+              <div style={{ fontSize: 11, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", minWidth: 100 }}>
+                {cls.timeStart}–{cls.timeEnd}
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, fontWeight: 600 }}>{cls.name}</div>
+                <div style={{ fontSize: 12, fontWeight: 600 }}>
+                  {pkgLabel[cls.packageFilter] ?? cls.packageFilter}
+                  {cls.status === "completed" && (
+                    <span style={{ fontSize: 9, color: "var(--tm)", fontWeight: 400, marginLeft: 6 }}>● เสร็จแล้ว</span>
+                  )}
+                </div>
                 <div style={{ fontSize: 10, color: "var(--tm)", marginTop: 1 }}>
                   📍 {cls.venue} · 👤 {cls.coach}
-                  {cls.status === "waitlist" && cls.waitlist && (
+                  {cls.waitlist > 0 && (
                     <span style={{ color: "var(--orange)", fontWeight: 600 }}> · Waitlist: {cls.waitlist}</span>
                   )}
                 </div>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, minWidth: 66 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: statusCapColor[cls.status] }}>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, minWidth: 56 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: countColor[cls.status] ?? "var(--tm)" }}>
                   {cls.booked}/{cls.capacity}
                 </div>
                 <ProgressBar value={cls.booked} max={cls.capacity} showLabel={false} />
@@ -78,7 +112,7 @@ export function TodayClassesCard() {
         </div>
       </Card>
 
-      <IncomingDetailModal open={detailOpen} onClose={() => setDetailOpen(false)} cls={null} />
+      <IncomingDetailModal open={!!selected} onClose={() => setSelected(null)} cls={selected} />
     </>
   );
 }
