@@ -74,6 +74,7 @@ interface PaymentRow {
   success?: boolean | null;
   api_response?: Record<string, unknown> | null;
   actual_amount?: number | null;
+  failure_reason?: string | null;
   // New SlipOK columns (post-migration)
   slipok_success?: boolean | null;
   slipok_message: string | null;
@@ -124,6 +125,7 @@ export interface AdminPayment {
   ref3: string | null;
   errorCode: number | null;
   errorMessage: string | null;
+  failureReason: string | null;
   note: string | null;
   rawResponse: Record<string, unknown> | null;
   // derived
@@ -204,6 +206,7 @@ function rowToAdminPayment(row: PaymentRow): AdminPayment {
     ref3,
     errorCode: row.error_code ?? null,
     errorMessage: row.error_message ?? null,
+    failureReason: row.failure_reason ?? null,
     note: row.note ?? null,
     rawResponse: row.raw_response,
     userName: row.profiles?.full_name ?? null,
