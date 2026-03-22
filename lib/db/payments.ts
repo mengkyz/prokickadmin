@@ -138,39 +138,65 @@ export interface PaymentSummary {
 }
 
 // ── Converter ─────────────────────────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rawData(row: PaymentRow): any {
+  return (row.raw_response as any)?.data ?? {};
+}
+
 function rowToAdminPayment(row: PaymentRow): AdminPayment {
-  const name = row.profiles?.full_name ?? row.sender_name ?? null;
+  const rd = rawData(row);
+
+  // Prefer dedicated columns (post-migration); fall back to raw_response.data
+  const slipokSuccess  = row.slipok_success  ?? (rd.success === true);
+  const slipokMessage  = row.slipok_message  ?? rd.message  ?? null;
+  const transRef       = row.trans_ref       ?? rd.transRef  ?? null;
+  const transDate      = row.trans_date      ?? rd.transDate ?? null;
+  const transTime      = row.trans_time      ?? rd.transTime ?? null;
+  const transTimestamp = row.trans_timestamp ?? rd.transTimestamp ?? null;
+  const sendingBank    = row.sending_bank    ?? rd.sendingBank   ?? null;
+  const receivingBank  = row.receiving_bank  ?? rd.receivingBank ?? null;
+  const senderName     = row.sender_name     ?? rd.sender?.displayName  ?? rd.sender?.name  ?? null;
+  const senderAccount  = row.sender_account  ?? rd.sender?.account?.value ?? null;
+  const receiverName   = row.receiver_name   ?? rd.receiver?.displayName ?? rd.receiver?.name ?? null;
+  const receiverAccount = row.receiver_account ?? rd.receiver?.account?.value ?? null;
+  const amount         = row.amount          ?? rd.amount ?? null;
+  const ref1           = row.ref1            ?? rd.ref1   ?? null;
+  const ref2           = row.ref2            ?? rd.ref2   ?? null;
+  const ref3           = row.ref3            ?? rd.ref3   ?? null;
+
+  const name = row.profiles?.full_name ?? senderName ?? null;
+
   return {
     id: row.id,
     createdAt: row.created_at,
     userId: row.user_id,
     childId: row.child_id,
     packageId: row.package_id,
-    slipokSuccess: row.slipok_success,
-    slipokMessage: row.slipok_message,
-    transRef: row.trans_ref,
-    transDate: row.trans_date,
-    transTime: row.trans_time,
-    transTimestamp: row.trans_timestamp,
-    sendingBank: row.sending_bank,
-    receivingBank: row.receiving_bank,
-    senderName: row.sender_name,
-    senderAccount: row.sender_account,
-    receiverName: row.receiver_name,
-    receiverAccount: row.receiver_account,
-    amount: row.amount,
-    ref1: row.ref1,
-    ref2: row.ref2,
-    ref3: row.ref3,
-    errorCode: row.error_code,
-    errorMessage: row.error_message,
-    note: row.note,
+    slipokSuccess,
+    slipokMessage,
+    transRef,
+    transDate,
+    transTime,
+    transTimestamp,
+    sendingBank,
+    receivingBank,
+    senderName,
+    senderAccount,
+    receiverName,
+    receiverAccount,
+    amount,
+    ref1,
+    ref2,
+    ref3,
+    errorCode: row.error_code ?? null,
+    errorMessage: row.error_message ?? null,
+    note: row.note ?? null,
     rawResponse: row.raw_response,
     userName: row.profiles?.full_name ?? null,
     userPhone: row.profiles?.phone_number ?? null,
     avatarColor: avatarColor(name ?? "?"),
     avatarInitial: avatarInitial(name ?? "?"),
-    displayDate: formatSlipDateTime(row.trans_date, row.trans_time),
+    displayDate: formatSlipDateTime(transDate, transTime),
     displayCreated: formatCreatedAt(row.created_at),
   };
 }
@@ -191,12 +217,14 @@ export async function fetchPayments(opts?: {
 
   if (opts?.from) query = query.gte("created_at", opts.from);
   if (opts?.to)   query = query.lte("created_at", opts.to);
-  if (opts?.successOnly) query = query.eq("slipok_success", true);
-  if (opts?.failedOnly)  query = query.eq("slipok_success", false);
+  // Note: slipok_success filter applied client-side (column may not exist pre-migration)
 
   const { data, error } = await query;
   if (error) throw new Error(error.message);
-  return (data as PaymentRow[]).map(rowToAdminPayment);
+  let rows = (data as PaymentRow[]).map(rowToAdminPayment);
+  if (opts?.successOnly) rows = rows.filter((r) => r.slipokSuccess);
+  if (opts?.failedOnly)  rows = rows.filter((r) => !r.slipokSuccess);
+  return rows;
 }
 
 export async function fetchPaymentSummary(): Promise<PaymentSummary> {
@@ -204,21 +232,23 @@ export async function fetchPaymentSummary(): Promise<PaymentSummary> {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
   const monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
 
+  // Use select=* so this works both before and after the migration adds dedicated columns.
+  // slipok_success / amount are derived in rowToAdminPayment via raw_response fallback.
   const { data, error } = await getSupabaseClient()
     .from("payment_logs")
-    .select("slipok_success, amount")
+    .select("*")
     .gte("created_at", monthStart)
     .lte("created_at", monthEnd);
 
   if (error) throw new Error(error.message);
 
-  const rows = data as { slipok_success: boolean; amount: number | null }[];
-  const success = rows.filter((r) => r.slipok_success);
+  const rows = (data as PaymentRow[]).map(rowToAdminPayment);
+  const success = rows.filter((r) => r.slipokSuccess);
   return {
     successThisMonth: success.length,
     revenueThisMonth: success.reduce((s, r) => s + (r.amount ?? 0), 0),
     totalThisMonth: rows.length,
-    failedThisMonth: rows.filter((r) => !r.slipok_success).length,
+    failedThisMonth: rows.filter((r) => !r.slipokSuccess).length,
   };
 }
 

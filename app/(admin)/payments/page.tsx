@@ -163,7 +163,8 @@ export default function PaymentsPage() {
         range = { from: new Date(customFrom).toISOString(), to: new Date(`${customTo}T23:59:59`).toISOString() };
       }
 
-      const [pays, sum] = await Promise.all([
+      // Use allSettled so a summary error never blocks the payments list
+      const [paysResult, sumResult] = await Promise.allSettled([
         fetchPayments({
           from: range?.from,
           to: range?.to,
@@ -172,8 +173,12 @@ export default function PaymentsPage() {
         }),
         fetchPaymentSummary(),
       ]);
-      setPayments(pays);
-      setSummary(sum);
+
+      if (paysResult.status === "fulfilled") setPayments(paysResult.value);
+      else showToast((paysResult.reason as Error).message, "error");
+
+      if (sumResult.status === "fulfilled") setSummary(sumResult.value);
+      // Summary failure is non-fatal — keep showing zeroes from useState init
     } catch (err) {
       showToast((err as Error).message, "error");
     } finally {
