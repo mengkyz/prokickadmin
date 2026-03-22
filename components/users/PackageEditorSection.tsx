@@ -131,7 +131,7 @@ export function PackageEditorSection({ packages, userId, childId, onRefresh }: P
     setSavingToggle(true);
     try {
       const newStatus = pkg.status === "inactive" ? "active" : "inactive";
-      await togglePackageStatus(pkg.id, userId, newStatus);
+      await togglePackageStatus(pkg.id, userId, newStatus, childId);
       showToast(newStatus === "active" ? "เปิดใช้แพ็กเกจแล้ว" : "ปิดใช้แพ็กเกจแล้ว");
       await onRefresh();
     } catch (err) { showToast((err as Error).message, "error"); }
@@ -149,7 +149,7 @@ export function PackageEditorSection({ packages, userId, childId, onRefresh }: P
         newDate = d.toISOString().split("T")[0];
       }
       if (!newDate) { showToast("ระบุวันหรือจำนวนวันที่ต้องการ", "error"); setSavingExt(false); return; }
-      await extendPackage(pkg.id, userId, newDate);
+      await extendPackage(pkg.id, userId, newDate, undefined, childId);
       showToast(`อัปเดตวันหมดอายุเป็น ${newDate} แล้ว`);
       await onRefresh();
       setExtDays(""); setExtNewDate("");
@@ -161,7 +161,7 @@ export function PackageEditorSection({ packages, userId, childId, onRefresh }: P
     if (!pkg) return;
     setSavingAdj(true);
     try {
-      await adjustPackageSessions(pkg.id, userId, adjSessions, adjExtra, adjNote);
+      await adjustPackageSessions(pkg.id, userId, adjSessions, adjExtra, adjNote, childId);
       showToast("บันทึก + Log แล้ว");
       await onRefresh();
       setAdjNote("");
@@ -195,7 +195,7 @@ export function PackageEditorSection({ packages, userId, childId, onRefresh }: P
   async function handleDeletePackage(pkgId: string) {
     setDeleting(true);
     try {
-      await deleteUserPackage(pkgId, userId);
+      await deleteUserPackage(pkgId, userId, childId);
       showToast("ลบแพ็กเกจแล้ว");
       setConfirmDeleteId(null);
       await onRefresh();

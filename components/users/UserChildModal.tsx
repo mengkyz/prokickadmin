@@ -8,9 +8,10 @@ import { useToast } from "@/lib/context/ToastContext";
 import {
   fetchUserPackages,
   fetchUserBookings,
+  fetchAdminLogs,
   updateChildProfile,
 } from "@/lib/db/users";
-import type { AdminChild, AdminPackage, AdminBooking } from "@/lib/db/users";
+import type { AdminChild, AdminPackage, AdminBooking, AdminLog } from "@/lib/db/users";
 import { PackageEditorSection } from "./PackageEditorSection";
 
 interface Props {
@@ -55,6 +56,7 @@ export function UserChildModal({ open, onClose, child, onSaved }: Props) {
   const [bookings,     setBookings]     = useState<AdminBooking[]>([]);
   const [loadingPkg,   setLoadingPkg]   = useState(false);
   const [loadingBk,    setLoadingBk]    = useState(false);
+  const [logs,         setLogs]         = useState<AdminLog[]>([]);
 
   // Sync form when child prop changes
   useEffect(() => {
@@ -73,8 +75,12 @@ export function UserChildModal({ open, onClose, child, onSaved }: Props) {
     if (!child) return;
     setLoadingPkg(true);
     try {
-      const pkgs = await fetchUserPackages(child.parentId, child.id);
+      const [pkgs, adminLogs] = await Promise.all([
+        fetchUserPackages(child.parentId, child.id),
+        fetchAdminLogs(child.parentId, child.id),
+      ]);
       setPackages(pkgs);
+      setLogs(adminLogs);
     } catch (err) { showToast((err as Error).message, "error"); }
     finally { setLoadingPkg(false); }
   }, [child, showToast]);
@@ -196,12 +202,32 @@ export function UserChildModal({ open, onClose, child, onSaved }: Props) {
             loadingPkg ? (
               <div style={{ textAlign: "center", padding: 32, color: "var(--tm)" }}>กำลังโหลด...</div>
             ) : (
-              <PackageEditorSection
-                packages={packages}
-                userId={child.parentId}
-                childId={child.id}
-                onRefresh={loadPackages}
-              />
+              <>
+                <PackageEditorSection
+                  packages={packages}
+                  userId={child.parentId}
+                  childId={child.id}
+                  onRefresh={loadPackages}
+                />
+                {/* Admin log — child-specific */}
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--tm)", textTransform: "uppercase", marginBottom: 7 }}>📋 LOG การแก้ไข</div>
+                  {logs.length === 0 ? (
+                    <div style={{ fontSize: 12, color: "var(--tm)", padding: "12px 0" }}>ยังไม่มี log</div>
+                  ) : logs.slice(0, 10).map((entry, i) => (
+                    <div key={entry.id} style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "8px 0", borderBottom: i < Math.min(logs.length, 10) - 1 ? "1px solid var(--bd)" : "none", fontSize: 11 }}>
+                      <div style={{ width: 7, height: 7, borderRadius: "50%", background: entry.dotColor, flexShrink: 0, marginTop: 2 }} />
+                      <div style={{ color: "var(--tm)", fontFamily: "'JetBrains Mono',monospace", minWidth: 110, flexShrink: 0, fontSize: 10 }}>
+                        {new Date(entry.createdAt).toLocaleString("th-TH", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{entry.action}</div>
+                        <div style={{ color: "var(--t2)", fontSize: 10 }}>{entry.detail}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
             )
           )}
 
