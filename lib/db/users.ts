@@ -124,7 +124,8 @@ export interface AdminChild {
   weightKg: number | null;
   jerseySize: string | null;
   adminNotes: string | null;
-  activePackage: AdminPackage | null;
+  activePackage: AdminPackage | null; // best display package (active→inactive→null)
+  ownPackages: AdminPackage[];        // all non-expired packages, start_date desc
   status: UserStatus;
   expiresAt: string | null;
   createdAt: string;
@@ -147,7 +148,8 @@ export interface AdminUser {
   avatarUrl: string | null;
   avatarColor: string;
   avatarInitial: string;
-  activePackage: AdminPackage | null;
+  activePackage: AdminPackage | null; // best display package (active→inactive→null)
+  ownPackages: AdminPackage[];        // all non-expired packages, start_date desc
   sessionsUsed: number;
   sessionsTotal: number;
   extraUsed: number;
@@ -197,8 +199,9 @@ function rowToPackage(row: UserPackageRow): AdminPackage {
   };
 }
 
+// Low threshold: ≤2 sessions remaining OR ≤7 days until expiry
 function deriveStatus(pkg: AdminPackage | null): UserStatus {
-  if (!pkg) return "No Package";
+  if (!pkg || pkg.status === "inactive") return "No Package";
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const expiry = new Date(pkg.expiryDate);
   if (expiry < today || pkg.status === "expired") return "Expired";
@@ -207,16 +210,37 @@ function deriveStatus(pkg: AdminPackage | null): UserStatus {
   return "Active";
 }
 
+// Helper: pick best display package — most recent active → inactive → null
+function pickDisplayPkg(rows: UserPackageRow[]): AdminPackage | null {
+  const sorted = [...rows].sort(
+    (a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime()
+  );
+  const active   = sorted.find((p) => p.status === "active");
+  const inactive = sorted.find((p) => p.status === "inactive");
+  const best = active ?? inactive ?? null;
+  return best ? rowToPackage(best) : null;
+}
+
 function rowToAdminUser(
   row: ProfileRow,
   pkgs: UserPackageRow[],
   children: AdminChild[]
 ): AdminUser {
   const name = row.full_name ?? "Unknown";
-  // Active package = own package (child_id IS NULL) with status active
-  const ownPkgRows = pkgs.filter((p) => p.child_id === null && p.status === "active");
-  const activePkg = ownPkgRows.length > 0 ? rowToPackage(ownPkgRows[0]) : null;
-  const status = deriveStatus(activePkg);
+
+  // Own packages only (user_id matches AND no child_id), sorted start_date desc
+  const ownPkgRows = pkgs
+    .filter((p) => p.user_id === row.id && p.child_id === null)
+    .sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
+
+  // Status is derived from the most recent ACTIVE package only
+  const activePkgRow = ownPkgRows.find((p) => p.status === "active") ?? null;
+  const activePkgForStatus = activePkgRow ? rowToPackage(activePkgRow) : null;
+  const status = deriveStatus(activePkgForStatus);
+
+  // Display package: most recent active → inactive → null
+  const displayPkg = pickDisplayPkg(ownPkgRows);
+  const ownPackages = ownPkgRows.map(rowToPackage);
 
   // Derive types
   const types: string[] = [];
@@ -227,6 +251,11 @@ function rowToAdminUser(
     types.push("Player");
   }
   if (types.length === 0) types.push(row.role === "parent" ? "Parent" : "Player");
+
+  // Sessions: include extra sessions in total
+  const totalWithExtra = displayPkg
+    ? displayPkg.totalSessions + displayPkg.extraSessionsPurchased
+    : 0;
 
   return {
     id: row.id,
@@ -243,13 +272,14 @@ function rowToAdminUser(
     avatarUrl: row.avatar_url,
     avatarColor: avatarColor(name),
     avatarInitial: avatarInitial(name),
-    activePackage: activePkg,
-    sessionsUsed: activePkg ? activePkg.totalSessions - activePkg.remainingSessions : 0,
-    sessionsTotal: activePkg?.totalSessions ?? 0,
-    extraUsed: 0, // derived from transactions if needed
-    extraTotal: activePkg?.extraSessionsPurchased ?? 0,
+    activePackage: displayPkg,
+    ownPackages,
+    sessionsUsed: displayPkg ? totalWithExtra - displayPkg.remainingSessions : 0,
+    sessionsTotal: totalWithExtra,
+    extraUsed: 0,
+    extraTotal: displayPkg?.extraSessionsPurchased ?? 0,
     status,
-    expiresAt: activePkg?.expiryDate ?? null,
+    expiresAt: activePkgForStatus?.expiryDate ?? null,
     children,
     createdAt: row.created_at,
   };
@@ -260,8 +290,14 @@ function rowToAdminChild(
   parentName: string,
   pkgs: UserPackageRow[]
 ): AdminChild {
-  const childPkgRows = pkgs.filter((p) => p.child_id === row.id && p.status === "active");
-  const activePkg = childPkgRows.length > 0 ? rowToPackage(childPkgRows[0]) : null;
+  const childPkgRows = pkgs
+    .filter((p) => p.child_id === row.id)
+    .sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
+  const displayPkg = pickDisplayPkg(childPkgRows);
+  const ownPackages = childPkgRows.map(rowToPackage);
+  // Status from most recent active only
+  const activePkgRow = childPkgRows.find((p) => p.status === "active") ?? null;
+  const activePkgForStatus = activePkgRow ? rowToPackage(activePkgRow) : null;
   return {
     id: row.id,
     parentId: row.parent_id,
@@ -272,9 +308,10 @@ function rowToAdminChild(
     weightKg: row.weight_kg,
     jerseySize: row.jersey_size,
     adminNotes: row.admin_notes,
-    activePackage: activePkg,
-    status: deriveStatus(activePkg),
-    expiresAt: activePkg?.expiryDate ?? null,
+    activePackage: displayPkg,
+    ownPackages,
+    status: deriveStatus(activePkgForStatus),
+    expiresAt: activePkgForStatus?.expiryDate ?? null,
     createdAt: row.created_at,
     avatarColor: avatarColor(row.nickname),
     avatarInitial: avatarInitial(row.nickname),
@@ -298,11 +335,12 @@ export async function fetchUsers(): Promise<AdminUser[]> {
     .select("*");
   if (ce) throw new Error(ce.message);
 
-  // Fetch all active packages with template info
+  // Fetch active + inactive packages (not expired) with template info, newest first
   const { data: packages, error: pke } = await sb
     .from("user_packages")
     .select("*, package_templates(name, session_count, type, extra_session_enabled, extra_session_limit, extra_session_price)")
-    .eq("status", "active");
+    .in("status", ["active", "inactive"])
+    .order("start_date", { ascending: false });
   if (pke) throw new Error(pke.message);
 
   const profileRows = (profiles ?? []) as ProfileRow[];

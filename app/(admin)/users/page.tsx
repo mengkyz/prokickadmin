@@ -20,6 +20,14 @@ const statusVariant: Record<string, BadgeVariant> = {
   "No Package": "gray",
 };
 
+// Helper: sessions math including extra
+function sessionsUsed(pkg: { totalSessions: number; extraSessionsPurchased: number; remainingSessions: number }) {
+  return pkg.totalSessions + pkg.extraSessionsPurchased - pkg.remainingSessions;
+}
+function sessionsTotal(pkg: { totalSessions: number; extraSessionsPurchased: number }) {
+  return pkg.totalSessions + pkg.extraSessionsPurchased;
+}
+
 export default function UsersPage() {
   const [modal, setModal]             = useState<Modal>("none");
   const [selected, setSelected]       = useState<Set<string>>(new Set());
@@ -28,6 +36,9 @@ export default function UsersPage() {
   const [error, setError]             = useState<string | null>(null);
   const [editTarget, setEditTarget]   = useState<AdminUser | null>(null);
   const [childTarget, setChildTarget] = useState<AdminChild | null>(null);
+
+  // Per-user/child selected package for table display (userId/childId → packageId)
+  const [displayPkgMap, setDisplayPkgMap] = useState<Record<string, string>>({});
 
   // Filters
   const [search, setSearch]           = useState("");
@@ -46,16 +57,35 @@ export default function UsersPage() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); setDisplayPkgMap({}); }, []);
 
-  // Filtered list
+  // Get the package to display for a user/child in the table
+  function getDisplayPkg(id: string, packages: import("@/lib/db/users").AdminPackage[], fallback: import("@/lib/db/users").AdminPackage | null) {
+    const sel = displayPkgMap[id];
+    if (sel) return packages.find((p) => p.id === sel) ?? fallback;
+    return fallback;
+  }
+
+  function cyclePkg(e: React.MouseEvent, id: string, packages: import("@/lib/db/users").AdminPackage[], dir: 1 | -1) {
+    e.stopPropagation();
+    const sel = displayPkgMap[id];
+    const idx = sel ? packages.findIndex((p) => p.id === sel) : 0;
+    const next = (idx + dir + packages.length) % packages.length;
+    setDisplayPkgMap((prev) => ({ ...prev, [id]: packages[next].id }));
+  }
+
+  // Filtered list — status filter matches parent OR any child
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return users.filter((u) => {
       if (q && !u.fullName.toLowerCase().includes(q) && !(u.phone ?? "").includes(q)) return false;
       if (filterType === "parent" && !u.types.includes("Parent")) return false;
       if (filterType === "player" && !u.types.includes("Player")) return false;
-      if (filterStatus !== "all" && u.status.toLowerCase() !== filterStatus.toLowerCase()) return false;
+      if (filterStatus !== "all") {
+        const parentMatch = u.status.toLowerCase() === filterStatus.toLowerCase();
+        const childMatch  = u.children.some((c) => c.status.toLowerCase() === filterStatus.toLowerCase());
+        if (!parentMatch && !childMatch) return false;
+      }
       return true;
     });
   }, [users, search, filterType, filterStatus]);
@@ -183,7 +213,18 @@ export default function UsersPage() {
                   </td>
                 </tr>
               )}
-              {filtered.map((user) => (
+              {filtered.map((user) => {
+                const dispPkg = getDisplayPkg(user.id, user.ownPackages, user.activePackage);
+                const uTotal  = dispPkg ? sessionsTotal(dispPkg) : 0;
+                const uUsed   = dispPkg ? sessionsUsed(dispPkg)  : 0;
+                const uPkgIdx = dispPkg ? user.ownPackages.findIndex((p) => p.id === dispPkg.id) : 0;
+
+                // Visible children: all children, filtered by status if active filter
+                const visibleChildren = filterStatus === "all"
+                  ? user.children
+                  : user.children.filter((c) => c.status.toLowerCase() === filterStatus.toLowerCase());
+
+                return (
                 <React.Fragment key={user.id}>
                   {/* Parent/Player row */}
                   <tr onClick={() => openParent(user)} style={{ cursor: "pointer" }}>
@@ -209,23 +250,31 @@ export default function UsersPage() {
                       </div>
                     </td>
                     <td>
-                      {user.activePackage && (
+                      {dispPkg ? (
                         <>
-                          <div style={{ fontSize: 11, fontWeight: 600 }}>{user.activePackage.packageName}</div>
-                          <div style={{ fontSize: 10, color: "var(--tm)" }}>{user.activePackage.startDate} – {user.activePackage.expiryDate}</div>
+                          <div style={{ fontSize: 11, fontWeight: 600 }}>{dispPkg.packageName}</div>
+                          <div style={{ fontSize: 10, color: "var(--tm)" }}>{dispPkg.startDate} – {dispPkg.expiryDate}</div>
+                          {user.ownPackages.length > 1 && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 3, marginTop: 2 }} onClick={(e) => e.stopPropagation()}>
+                              <button onClick={(e) => cyclePkg(e, user.id, user.ownPackages, -1)} style={{ fontSize: 9, cursor: "pointer", background: "none", border: "none", color: "var(--tm)", padding: "0 2px" }}>◀</button>
+                              <span style={{ fontSize: 9, color: "var(--tm)", fontFamily: "'JetBrains Mono',monospace" }}>{uPkgIdx + 1}/{user.ownPackages.length}</span>
+                              <button onClick={(e) => cyclePkg(e, user.id, user.ownPackages, 1)} style={{ fontSize: 9, cursor: "pointer", background: "none", border: "none", color: "var(--tm)", padding: "0 2px" }}>▶</button>
+                            </div>
+                          )}
                         </>
-                      )}
+                      ) : null}
                     </td>
                     <td style={{ minWidth: 90 }}>
-                      {user.activePackage ? (
+                      {dispPkg ? (
                         <ProgressBar
-                          value={user.activePackage.totalSessions - user.activePackage.remainingSessions}
-                          max={user.activePackage.totalSessions}
+                          value={uUsed}
+                          max={uTotal}
+                          label={`${dispPkg.remainingSessions}/${uTotal}`}
                         />
                       ) : <span style={{ color: "var(--tm)", fontSize: 11 }}>—</span>}
                     </td>
                     <td className="pk-mono">
-                      {user.activePackage ? (user.activePackage.extraSessionsPurchased ?? 0) : "—"}
+                      {dispPkg ? (dispPkg.extraSessionsPurchased > 0 ? `+${dispPkg.extraSessionsPurchased}` : "—") : "—"}
                     </td>
                     <td>
                       <Badge variant={statusVariant[user.status] ?? "gray"}>
@@ -234,7 +283,7 @@ export default function UsersPage() {
                           : user.status}
                       </Badge>
                     </td>
-                    <td className="pk-mono">{user.activePackage?.expiryDate ?? "—"}</td>
+                    <td className="pk-mono">{dispPkg?.expiryDate ?? "—"}</td>
                     <td>
                       <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); openParent(user); }}>
                         จัดการ
@@ -242,8 +291,13 @@ export default function UsersPage() {
                     </td>
                   </tr>
 
-                  {/* Child rows */}
-                  {user.children.map((child) => (
+                  {/* Child rows — only visible children (filtered by status if needed) */}
+                  {visibleChildren.map((child) => {
+                    const cDispPkg  = getDisplayPkg(child.id, child.ownPackages, child.activePackage);
+                    const cTotal    = cDispPkg ? sessionsTotal(cDispPkg) : 0;
+                    const cUsed     = cDispPkg ? sessionsUsed(cDispPkg)  : 0;
+                    const cPkgIdx   = cDispPkg ? child.ownPackages.findIndex((p) => p.id === cDispPkg.id) : 0;
+                    return (
                     <tr key={child.id} className="child-row" onClick={() => openChild(child)} style={{ cursor: "pointer" }}>
                       <td onClick={(e) => { e.stopPropagation(); toggleUser(child.id); }} className="child-indent">
                         <input type="checkbox" checked={selected.has(child.id)} onChange={() => {}} />
@@ -261,22 +315,32 @@ export default function UsersPage() {
                       </td>
                       <td><Badge variant="gray">Child</Badge></td>
                       <td>
-                        {child.activePackage && (
+                        {cDispPkg ? (
                           <>
-                            <div style={{ fontSize: 10, fontWeight: 600 }}>{child.activePackage.packageName}</div>
-                            <div style={{ fontSize: 10, color: "var(--tm)" }}>{child.activePackage.startDate} – {child.activePackage.expiryDate}</div>
+                            <div style={{ fontSize: 10, fontWeight: 600 }}>{cDispPkg.packageName}</div>
+                            <div style={{ fontSize: 10, color: "var(--tm)" }}>{cDispPkg.startDate} – {cDispPkg.expiryDate}</div>
+                            {child.ownPackages.length > 1 && (
+                              <div style={{ display: "flex", alignItems: "center", gap: 3, marginTop: 2 }} onClick={(e) => e.stopPropagation()}>
+                                <button onClick={(e) => cyclePkg(e, child.id, child.ownPackages, -1)} style={{ fontSize: 9, cursor: "pointer", background: "none", border: "none", color: "var(--tm)", padding: "0 2px" }}>◀</button>
+                                <span style={{ fontSize: 9, color: "var(--tm)", fontFamily: "'JetBrains Mono',monospace" }}>{cPkgIdx + 1}/{child.ownPackages.length}</span>
+                                <button onClick={(e) => cyclePkg(e, child.id, child.ownPackages, 1)} style={{ fontSize: 9, cursor: "pointer", background: "none", border: "none", color: "var(--tm)", padding: "0 2px" }}>▶</button>
+                              </div>
+                            )}
                           </>
-                        )}
+                        ) : null}
                       </td>
                       <td style={{ minWidth: 90 }}>
-                        {child.activePackage ? (
+                        {cDispPkg ? (
                           <ProgressBar
-                            value={child.activePackage.totalSessions - child.activePackage.remainingSessions}
-                            max={child.activePackage.totalSessions}
+                            value={cUsed}
+                            max={cTotal}
+                            label={`${cDispPkg.remainingSessions}/${cTotal}`}
                           />
                         ) : <span style={{ color: "var(--tm)", fontSize: 11 }}>—</span>}
                       </td>
-                      <td className="pk-mono">—</td>
+                      <td className="pk-mono">
+                        {cDispPkg ? (cDispPkg.extraSessionsPurchased > 0 ? `+${cDispPkg.extraSessionsPurchased}` : "—") : "—"}
+                      </td>
                       <td>
                         <Badge variant={statusVariant[child.status] ?? "gray"}>
                           {child.status === "Active" ? "● Active"
@@ -284,16 +348,18 @@ export default function UsersPage() {
                             : child.status}
                         </Badge>
                       </td>
-                      <td className="pk-mono">{child.activePackage?.expiryDate ?? "—"}</td>
+                      <td className="pk-mono">{cDispPkg?.expiryDate ?? "—"}</td>
                       <td>
                         <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); openChild(child); }}>
                           จัดการ
                         </Button>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </React.Fragment>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         )}
