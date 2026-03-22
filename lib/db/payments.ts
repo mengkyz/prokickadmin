@@ -70,7 +70,12 @@ interface PaymentRow {
   user_id: string | null;
   child_id: string | null;
   package_id: string | null;
-  slipok_success: boolean;
+  // Legacy columns (older records)
+  success?: boolean | null;
+  api_response?: Record<string, unknown> | null;
+  actual_amount?: number | null;
+  // New SlipOK columns (post-migration)
+  slipok_success?: boolean | null;
   slipok_message: string | null;
   trans_ref: string | null;
   trans_date: string | null;
@@ -140,14 +145,23 @@ export interface PaymentSummary {
 // ── Converter ─────────────────────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function rawData(row: PaymentRow): any {
-  return (row.raw_response as any)?.data ?? {};
+  // Prefer raw_response.data (new), fall back to api_response.data (legacy)
+  return (row.raw_response as any)?.data
+      ?? (row.api_response as any)?.data
+      ?? {};
 }
 
 function rowToAdminPayment(row: PaymentRow): AdminPayment {
   const rd = rawData(row);
 
-  // Prefer dedicated columns (post-migration); fall back to raw_response.data
-  const slipokSuccess  = row.slipok_success  ?? (rd.success === true);
+  // Prefer dedicated columns (post-migration); fall back to raw_response/api_response data.
+  // slipok_success defaults to false in DB for old records that pre-date the migration,
+  // so we can't use ?? (which only catches null/undefined). Use explicit true check instead:
+  // if slipok_success is explicitly true → confirmed; otherwise fall back to legacy `success`
+  // column or api_response.data.success.
+  const slipokSuccess  = row.slipok_success === true
+    ? true
+    : (row.success === true || rd.success === true);
   const slipokMessage  = row.slipok_message  ?? rd.message  ?? null;
   const transRef       = row.trans_ref       ?? rd.transRef  ?? null;
   const transDate      = row.trans_date      ?? rd.transDate ?? null;
@@ -159,7 +173,7 @@ function rowToAdminPayment(row: PaymentRow): AdminPayment {
   const senderAccount  = row.sender_account  ?? rd.sender?.account?.value ?? null;
   const receiverName   = row.receiver_name   ?? rd.receiver?.displayName ?? rd.receiver?.name ?? null;
   const receiverAccount = row.receiver_account ?? rd.receiver?.account?.value ?? null;
-  const amount         = row.amount          ?? rd.amount ?? null;
+  const amount         = row.amount          ?? row.actual_amount ?? rd.amount ?? null;
   const ref1           = row.ref1            ?? rd.ref1   ?? null;
   const ref2           = row.ref2            ?? rd.ref2   ?? null;
   const ref3           = row.ref3            ?? rd.ref3   ?? null;
