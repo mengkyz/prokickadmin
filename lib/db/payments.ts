@@ -96,8 +96,16 @@ interface PaymentRow {
   error_message: string | null;
   note: string | null;
   raw_response: Record<string, unknown> | null;
+  // Legacy extra columns
+  payment_type?: string | null;
+  expected_amount?: number | null;
   // joined
   profiles?: { full_name: string; phone_number: string | null } | null;
+  child_profiles?: { nickname: string } | null;
+  user_packages?: {
+    remaining_sessions: number;
+    package_templates: { name: string; type: string; session_count: number; extra_session_price: number } | null;
+  } | null;
 }
 
 // ── Public type ───────────────────────────────────────────────────────────────
@@ -128,6 +136,14 @@ export interface AdminPayment {
   failureReason: string | null;
   note: string | null;
   rawResponse: Record<string, unknown> | null;
+  // purchase context
+  paymentType: string | null;
+  expectedAmount: number | null;
+  packageName: string | null;
+  packageType: string | null;
+  packageSessions: number | null;
+  remainingSessions: number | null;
+  childName: string | null;
   // derived
   userName: string | null;
   userPhone: string | null;
@@ -209,6 +225,13 @@ function rowToAdminPayment(row: PaymentRow): AdminPayment {
     failureReason: row.failure_reason ?? null,
     note: row.note ?? null,
     rawResponse: row.raw_response,
+    paymentType: row.payment_type ?? null,
+    expectedAmount: row.expected_amount ?? row.actual_amount ?? null,
+    packageName: row.user_packages?.package_templates?.name ?? null,
+    packageType: row.user_packages?.package_templates?.type ?? null,
+    packageSessions: row.user_packages?.package_templates?.session_count ?? null,
+    remainingSessions: row.user_packages?.remaining_sessions ?? null,
+    childName: row.child_profiles?.nickname ?? null,
     userName: row.profiles?.full_name ?? null,
     userPhone: row.profiles?.phone_number ?? null,
     avatarColor: avatarColor(name ?? "?"),
@@ -228,7 +251,7 @@ export async function fetchPayments(opts?: {
 }): Promise<AdminPayment[]> {
   let query = getSupabaseClient()
     .from("payment_logs")
-    .select(`*, profiles(full_name, phone_number)`)
+    .select(`*, profiles(full_name, phone_number), child_profiles(nickname), user_packages(remaining_sessions, package_templates(name, type, session_count, extra_session_price))`)
     .order("created_at", { ascending: false })
     .limit(opts?.limit ?? 200);
 
