@@ -210,14 +210,15 @@ function deriveStatus(pkg: AdminPackage | null): UserStatus {
   return "Active";
 }
 
-// Helper: pick best display package — most recent active → inactive → null
+// Helper: pick best display package — most recent active → inactive → expired → null
 function pickDisplayPkg(rows: UserPackageRow[]): AdminPackage | null {
   const sorted = [...rows].sort(
     (a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime()
   );
   const active   = sorted.find((p) => p.status === "active");
   const inactive = sorted.find((p) => p.status === "inactive");
-  const best = active ?? inactive ?? null;
+  const expired  = sorted.find((p) => p.status === "expired");
+  const best = active ?? inactive ?? expired ?? null;
   return best ? rowToPackage(best) : null;
 }
 
