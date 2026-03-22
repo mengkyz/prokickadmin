@@ -15,13 +15,14 @@ import {
   togglePackageStatus,
   extendPackage,
 } from "@/lib/db/users";
-import type { AdminUser, AdminPackage, AdminBooking, AdminLog } from "@/lib/db/users";
+import type { AdminUser, AdminPackage, AdminBooking, AdminLog, AdminChild } from "@/lib/db/users";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   user: AdminUser | null;
   onSaved?: (userId: string) => void;
+  onOpenChild?: (child: AdminChild) => void;
 }
 
 const JERSEY_SIZES = ["XS","S","M","L","XL","XXL","3XL","4XL"];
@@ -309,7 +310,7 @@ function PackageEditorSection({ packages, userId, childId, onRefresh }: PackageE
 }
 
 // ── Main modal ────────────────────────────────────────────
-export function UserParentModal({ open, onClose, user, onSaved }: Props) {
+export function UserParentModal({ open, onClose, user, onSaved, onOpenChild }: Props) {
   const { showToast } = useToast();
   const [tab, setTab] = useState(0);
   const tabs = ["ข้อมูลส่วนตัว", "แพ็กเกจ", "ประวัติการจอง"];
@@ -326,13 +327,11 @@ export function UserParentModal({ open, onClose, user, onSaved }: Props) {
   const [savingProfile, setSavingProfile] = useState(false);
 
   // ── Package data ──────────────────────────────────────
-  const [packages,        setPackages]        = useState<AdminPackage[]>([]);
-  const [childPkgs,       setChildPkgs]       = useState<Record<string, AdminPackage[]>>({});
-  const [loadingChildPkgs,setLoadingChildPkgs]= useState<Record<string, boolean>>({});
-  const [bookings,        setBookings]        = useState<AdminBooking[]>([]);
-  const [logs,            setLogs]            = useState<AdminLog[]>([]);
-  const [loadingPkg,      setLoadingPkg]      = useState(false);
-  const [loadingBk,       setLoadingBk]       = useState(false);
+  const [packages,   setPackages]   = useState<AdminPackage[]>([]);
+  const [bookings,   setBookings]   = useState<AdminBooking[]>([]);
+  const [logs,       setLogs]       = useState<AdminLog[]>([]);
+  const [loadingPkg, setLoadingPkg] = useState(false);
+  const [loadingBk,  setLoadingBk]  = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -352,43 +351,14 @@ export function UserParentModal({ open, onClose, user, onSaved }: Props) {
     if (!user) return;
     setLoadingPkg(true);
     try {
-      const [pkgs, logs] = await Promise.all([
+      const [pkgs, adminLogs] = await Promise.all([
         fetchUserPackages(user.id, null),
         fetchAdminLogs(user.id),
       ]);
       setPackages(pkgs);
-      setLogs(logs);
-      // Load children packages in parallel
-      const initLoading: Record<string, boolean> = {};
-      user.children.forEach((c) => { initLoading[c.id] = true; });
-      setLoadingChildPkgs(initLoading);
-      const results = await Promise.allSettled(
-        user.children.map((child) => fetchUserPackages(child.parentId, child.id))
-      );
-      const map: Record<string, AdminPackage[]> = {};
-      user.children.forEach((child, i) => {
-        const r = results[i];
-        map[child.id] = r.status === "fulfilled" ? r.value : [];
-      });
-      setChildPkgs(map);
-      setLoadingChildPkgs({});
+      setLogs(adminLogs);
     } catch (err) { showToast((err as Error).message, "error"); }
     finally { setLoadingPkg(false); }
-  }, [user, showToast]);
-
-  const loadChildPackages = useCallback(async (childId: string) => {
-    const child = user?.children.find((c) => c.id === childId);
-    if (!child) return;
-    setLoadingChildPkgs((prev) => ({ ...prev, [childId]: true }));
-    try {
-      const [pkgs, updatedLogs] = await Promise.all([
-        fetchUserPackages(child.parentId, childId),
-        fetchAdminLogs(user!.id),
-      ]);
-      setChildPkgs((prev) => ({ ...prev, [childId]: pkgs }));
-      setLogs(updatedLogs);
-    } catch (err) { showToast((err as Error).message, "error"); }
-    finally { setLoadingChildPkgs((prev) => ({ ...prev, [childId]: false })); }
   }, [user, showToast]);
 
   const loadBookings = useCallback(async () => {
@@ -514,36 +484,34 @@ export function UserParentModal({ open, onClose, user, onSaved }: Props) {
                   onRefresh={loadPackages}
                 />
 
-                {/* Children sections */}
+                {/* Children overview */}
                 {user.children.length > 0 && (
                   <>
-                    <div style={{ margin: "16px 0", display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ margin: "16px 0 10px", display: "flex", alignItems: "center", gap: 8 }}>
                       <div style={{ flex: 1, height: 1, background: "var(--bd)" }} />
                       <div style={{ fontSize: 10, color: "var(--tm)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>เด็กในปกครอง</div>
                       <div style={{ flex: 1, height: 1, background: "var(--bd)" }} />
                     </div>
-
-                    {user.children.map((child, idx) => (
-                      <div key={child.id}>
-                        {idx > 0 && <div style={{ height: 1, background: "var(--bd)", margin: "12px 0" }} />}
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                          <div style={{ width: 26, height: 26, borderRadius: "50%", background: child.avatarColor, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
-                            {child.avatarInitial}
-                          </div>
-                          <div>
-                            <div style={{ fontSize: 13, fontWeight: 700 }}>{child.nickname}</div>
-                            <div style={{ fontSize: 10, color: "var(--tm)" }}>นักเรียน</div>
+                    {user.children.map((child) => (
+                      <div key={child.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", border: "1.5px solid var(--bd)", borderRadius: 9, marginBottom: 8, background: "var(--bg)" }}>
+                        <div style={{ width: 32, height: 32, borderRadius: "50%", background: child.avatarColor, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
+                          {child.avatarInitial}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700 }}>{child.nickname}</div>
+                          <div style={{ fontSize: 10, color: "var(--tm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {child.activePackage
+                              ? `${child.activePackage.packageName} · หมด ${child.activePackage.expiryDate}`
+                              : "ยังไม่มีแพ็กเกจ"}
                           </div>
                         </div>
-                        {loadingChildPkgs[child.id] ? (
-                          <div style={{ textAlign: "center", padding: "12px 0", color: "var(--tm)", fontSize: 12 }}>กำลังโหลด...</div>
-                        ) : (
-                          <PackageEditorSection
-                            packages={childPkgs[child.id] ?? []}
-                            userId={child.parentId}
-                            childId={child.id}
-                            onRefresh={() => loadChildPackages(child.id)}
-                          />
+                        <Badge variant={child.status === "Active" ? "green" : child.status === "Low" ? "orange" : child.status === "Expired" ? "red" : "gray"}>
+                          ● {child.status}
+                        </Badge>
+                        {onOpenChild && (
+                          <Button variant="ghost" size="sm" style={{ fontSize: 11, whiteSpace: "nowrap" }} onClick={() => onOpenChild(child)}>
+                            จัดการ →
+                          </Button>
                         )}
                       </div>
                     ))}
