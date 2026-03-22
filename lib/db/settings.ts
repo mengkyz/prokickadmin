@@ -140,6 +140,31 @@ export async function toggleVenueActive(id: string, isActive: boolean): Promise<
   if (error) throw new Error(error.message);
 }
 
+/** Batch-check which venues have never been used in any class (safe to hard-delete) */
+export async function checkVenuesDeletable(ids: string[]): Promise<Record<string, boolean>> {
+  if (ids.length === 0) return {};
+  const { data } = await getSupabaseClient()
+    .from("classes")
+    .select("venue_id")
+    .in("venue_id", ids);
+  const used = new Set((data ?? []).map((r: any) => r.venue_id).filter(Boolean));
+  const result: Record<string, boolean> = {};
+  for (const id of ids) result[id] = !used.has(id);
+  return result;
+}
+
+/** Hard-delete a venue — only allowed if it has never been used in any class */
+export async function deleteVenue(id: string): Promise<void> {
+  const { count } = await getSupabaseClient()
+    .from("classes")
+    .select("id", { count: "exact", head: true })
+    .eq("venue_id", id);
+  if ((count ?? 0) > 0) throw new Error("ไม่สามารถลบได้: สนามนี้ถูกใช้งานในคลาสอยู่แล้ว");
+
+  const { error } = await getSupabaseClient().from("venues").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
 // ── COACHES ───────────────────────────────────────────────
 
 /** Fetch all coaches. Pass includeInactive=true to also get deactivated ones. */
@@ -195,5 +220,30 @@ export async function toggleCoachActive(id: string, isActive: boolean): Promise<
     .update({ is_active: isActive })
     .eq("id", id);
 
+  if (error) throw new Error(error.message);
+}
+
+/** Batch-check which coaches have never been used in any class (safe to hard-delete) */
+export async function checkCoachesDeletable(ids: string[]): Promise<Record<string, boolean>> {
+  if (ids.length === 0) return {};
+  const { data } = await getSupabaseClient()
+    .from("classes")
+    .select("coach_id")
+    .in("coach_id", ids);
+  const used = new Set((data ?? []).map((r: any) => r.coach_id).filter(Boolean));
+  const result: Record<string, boolean> = {};
+  for (const id of ids) result[id] = !used.has(id);
+  return result;
+}
+
+/** Hard-delete a coach — only allowed if they have never been used in any class */
+export async function deleteCoach(id: string): Promise<void> {
+  const { count } = await getSupabaseClient()
+    .from("classes")
+    .select("id", { count: "exact", head: true })
+    .eq("coach_id", id);
+  if ((count ?? 0) > 0) throw new Error("ไม่สามารถลบได้: โค้ชคนนี้ถูกใช้งานในคลาสอยู่แล้ว");
+
+  const { error } = await getSupabaseClient().from("coaches").delete().eq("id", id);
   if (error) throw new Error(error.message);
 }
