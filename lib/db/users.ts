@@ -85,6 +85,7 @@ interface AdminLogRow {
   id: string;
   created_at: string;
   user_id: string | null;
+  child_id: string | null;
   target_type: string;
   target_id: string;
   action: string;
@@ -463,19 +464,25 @@ export async function fetchUserBookings(userId: string, childId?: string | null)
 }
 
 // ── READ: Admin logs + transaction history ────────────────
-export async function fetchAdminLogs(userId: string): Promise<AdminLog[]> {
+export async function fetchAdminLogs(userId: string, childId?: string | null): Promise<AdminLog[]> {
   const sb = getSupabaseClient();
 
-  // Get admin logs
-  const { data: logs } = await sb
+  // Filter logs by child_id: null = parent-only logs; string = child-specific logs
+  let logQuery = sb
     .from("admin_logs")
     .select("*")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(30);
+  if (childId) {
+    logQuery = logQuery.eq("child_id", childId);
+  } else {
+    logQuery = logQuery.is("child_id", null);
+  }
+  const { data: logs } = await logQuery;
 
-  // Get payment transactions
-  const { data: txns } = await sb
+  // Payment transactions — parent-level only (no child_id filter)
+  const { data: txns } = childId ? { data: [] } : await sb
     .from("transactions")
     .select("*")
     .eq("user_id", userId)
@@ -603,7 +610,8 @@ export async function adjustPackageSessions(
   userId: string,
   newSessions: number,
   newExtra: number,
-  note: string
+  note: string,
+  childId?: string | null
 ): Promise<void> {
   // Get current values first for delta calculation
   const { data: current, error: fe } = await getSupabaseClient()
@@ -624,6 +632,7 @@ export async function adjustPackageSessions(
 
   await writeAdminLog({
     userId,
+    childId: childId ?? null,
     targetType: "user_package",
     targetId: packageId,
     action: "adjust_sessions",
@@ -636,7 +645,8 @@ export async function adjustPackageSessions(
 export async function togglePackageStatus(
   packageId: string,
   userId: string,
-  newStatus: "active" | "inactive"
+  newStatus: "active" | "inactive",
+  childId?: string | null
 ): Promise<void> {
   const { error } = await getSupabaseClient()
     .from("user_packages")
@@ -647,6 +657,7 @@ export async function togglePackageStatus(
   const action = newStatus === "active" ? "activate_package" : "deactivate_package";
   await writeAdminLog({
     userId,
+    childId: childId ?? null,
     targetType: "user_package",
     targetId: packageId,
     action,
@@ -658,7 +669,8 @@ export async function extendPackage(
   packageId: string,
   userId: string,
   newExpiryDate: string,
-  note?: string
+  note?: string,
+  childId?: string | null
 ): Promise<void> {
   // Fetch current package to determine status update
   const { data: current, error: fe } = await getSupabaseClient()
@@ -691,6 +703,7 @@ export async function extendPackage(
 
   await writeAdminLog({
     userId,
+    childId: childId ?? null,
     targetType: "user_package",
     targetId: packageId,
     action: "extend",
@@ -755,6 +768,7 @@ export async function insertUserPackage(
 
   await writeAdminLog({
     userId,
+    childId: childId ?? null,
     targetType: "user_package",
     targetId: userId,
     action: "insert_package",
@@ -777,7 +791,7 @@ export async function checkPackagesDeletable(packageIds: string[]): Promise<Reco
   return result;
 }
 
-export async function deleteUserPackage(packageId: string, userId: string): Promise<void> {
+export async function deleteUserPackage(packageId: string, userId: string, childId?: string | null): Promise<void> {
   const sb = getSupabaseClient();
 
   // Block if any payment_logs reference this package
@@ -806,6 +820,7 @@ export async function deleteUserPackage(packageId: string, userId: string): Prom
 
   await writeAdminLog({
     userId,
+    childId: childId ?? null,
     targetType: "user_package",
     targetId: packageId,
     action: "delete_package",
@@ -816,6 +831,7 @@ export async function deleteUserPackage(packageId: string, userId: string): Prom
 // ── Internal: write admin log ─────────────────────────────
 async function writeAdminLog(opts: {
   userId: string;
+  childId?: string | null;
   targetType: string;
   targetId: string;
   action: string;
@@ -827,6 +843,7 @@ async function writeAdminLog(opts: {
     .from("admin_logs")
     .insert({
       user_id:        opts.userId,
+      child_id:       opts.childId ?? null,
       target_type:    opts.targetType,
       target_id:      opts.targetId,
       action:         opts.action,

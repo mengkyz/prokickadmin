@@ -221,43 +221,9 @@ export function UserParentModal({ open, onClose, user, onSaved, onOpenChild }: P
                   onRefresh={loadPackages}
                 />
 
-                {/* Children overview */}
-                {user.children.length > 0 && (
-                  <>
-                    <div style={{ margin: "16px 0 10px", display: "flex", alignItems: "center", gap: 8 }}>
-                      <div style={{ flex: 1, height: 1, background: "var(--bd)" }} />
-                      <div style={{ fontSize: 10, color: "var(--tm)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>เด็กในปกครอง</div>
-                      <div style={{ flex: 1, height: 1, background: "var(--bd)" }} />
-                    </div>
-                    {user.children.map((child) => (
-                      <div key={child.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", border: "1.5px solid var(--bd)", borderRadius: 9, marginBottom: 8, background: "var(--bg)" }}>
-                        <div style={{ width: 32, height: 32, borderRadius: "50%", background: child.avatarColor, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
-                          {child.avatarInitial}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, fontWeight: 700 }}>{child.nickname}</div>
-                          <div style={{ fontSize: 10, color: "var(--tm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {child.activePackage
-                              ? `${child.activePackage.packageName} · หมด ${child.activePackage.expiryDate}`
-                              : "ยังไม่มีแพ็กเกจ"}
-                          </div>
-                        </div>
-                        <Badge variant={child.status === "Active" ? "green" : child.status === "Low" ? "orange" : child.status === "Expired" ? "red" : "gray"}>
-                          ● {child.status}
-                        </Badge>
-                        {onOpenChild && (
-                          <Button variant="ghost" size="sm" style={{ fontSize: 11, whiteSpace: "nowrap" }} onClick={() => onOpenChild(child)}>
-                            จัดการ →
-                          </Button>
-                        )}
-                      </div>
-                    ))}
-                  </>
-                )}
-
-                {/* Admin log */}
+                {/* Admin log — parent-only (child_id IS NULL) */}
                 <div style={{ marginTop: 16 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--tm)", textTransform: "uppercase", marginBottom: 7 }}>📋 Log การแก้ไข (ผู้ปกครอง + เด็ก)</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--tm)", textTransform: "uppercase", marginBottom: 7 }}>📋 LOG การแก้ไข</div>
                   {logs.length === 0 ? (
                     <div style={{ fontSize: 12, color: "var(--tm)", padding: "12px 0" }}>ยังไม่มี log</div>
                   ) : logs.slice(0, 10).map((entry, i) => (
