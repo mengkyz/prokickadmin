@@ -306,6 +306,7 @@ export default function UsersPage() {
         onClose={handleClose}
         user={editTarget}
         onSaved={() => load()}
+        onOpenChild={(child) => { setChildTarget(child); setModal("child"); }}
       />
       <UserChildModal
         key={childTarget?.id ?? "child-none"}
