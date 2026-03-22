@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/Button";
 import { Modal, FormGrid, FormItem, DefaultFooter } from "@/components/ui/Modal";
 import { useToast } from "@/lib/context/ToastContext";
 import {
-  fetchVenues, createVenue, updateVenue, toggleVenueActive,
-  fetchCoaches, createCoach, updateCoach, toggleCoachActive,
+  fetchVenues, createVenue, updateVenue, toggleVenueActive, checkVenuesDeletable, deleteVenue,
+  fetchCoaches, createCoach, updateCoach, toggleCoachActive, checkCoachesDeletable, deleteCoach,
 } from "@/lib/db/settings";
 import type { AdminVenue, AdminCoach, VenueInput, CoachInput } from "@/lib/db/settings";
 
@@ -38,18 +38,32 @@ export default function SettingsPage() {
   const [coachPhone, setCoachPhone] = useState("");
   const [savingC,    setSavingC]    = useState(false);
 
+  // ── Delete state ──────────────────────────────────────────
+  const [deletableVenues,  setDeletableVenues]  = useState<Record<string, boolean>>({});
+  const [deletableCoaches, setDeletableCoaches] = useState<Record<string, boolean>>({});
+  const [confirmDeleteV,   setConfirmDeleteV]   = useState<string | null>(null);
+  const [confirmDeleteC,   setConfirmDeleteC]   = useState<string | null>(null);
+  const [deletingV,        setDeletingV]        = useState(false);
+  const [deletingC,        setDeletingC]        = useState(false);
+
   // ── Loaders ───────────────────────────────────────────────
   const loadVenues = useCallback(async () => {
     setLoadingV(true);
-    try { setVenues(await fetchVenues(true)); }
-    catch (err) { showToast((err as Error).message, "error"); }
+    try {
+      const vs = await fetchVenues(true);
+      setVenues(vs);
+      checkVenuesDeletable(vs.map((v) => v.id)).then(setDeletableVenues).catch(() => {});
+    } catch (err) { showToast((err as Error).message, "error"); }
     finally { setLoadingV(false); }
   }, [showToast]);
 
   const loadCoaches = useCallback(async () => {
     setLoadingC(true);
-    try { setCoaches(await fetchCoaches(true)); }
-    catch (err) { showToast((err as Error).message, "error"); }
+    try {
+      const cs = await fetchCoaches(true);
+      setCoaches(cs);
+      checkCoachesDeletable(cs.map((c) => c.id)).then(setDeletableCoaches).catch(() => {});
+    } catch (err) { showToast((err as Error).message, "error"); }
     finally { setLoadingC(false); }
   }, [showToast]);
 
@@ -111,6 +125,17 @@ export default function SettingsPage() {
     } catch (err) { showToast((err as Error).message, "error"); }
   }
 
+  async function handleDeleteVenue(id: string) {
+    setDeletingV(true);
+    try {
+      await deleteVenue(id);
+      showToast("ลบสนามแล้ว");
+      setConfirmDeleteV(null);
+      await loadVenues();
+    } catch (err) { showToast((err as Error).message, "error"); setConfirmDeleteV(null); }
+    finally { setDeletingV(false); }
+  }
+
   // ── Coach CRUD ────────────────────────────────────────────
   async function handleSaveCoach() {
     if (!coachName.trim()) { showToast("กรุณาใส่ชื่อโค้ช", "error"); return; }
@@ -136,6 +161,17 @@ export default function SettingsPage() {
       showToast(c.isActive ? "ปิดการใช้งานโค้ชแล้ว" : "เปิดการใช้งานโค้ชแล้ว");
       await loadCoaches();
     } catch (err) { showToast((err as Error).message, "error"); }
+  }
+
+  async function handleDeleteCoach(id: string) {
+    setDeletingC(true);
+    try {
+      await deleteCoach(id);
+      showToast("ลบโค้ชแล้ว");
+      setConfirmDeleteC(null);
+      await loadCoaches();
+    } catch (err) { showToast((err as Error).message, "error"); setConfirmDeleteC(null); }
+    finally { setDeletingC(false); }
   }
 
   // ── Styles ────────────────────────────────────────────────
@@ -201,7 +237,7 @@ export default function SettingsPage() {
                 </div>
                 <div style={{ fontSize: 11, color: "var(--tm)" }}>{venue.description}</div>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span style={{ fontSize: 11, color: "var(--tm)", fontFamily: "'JetBrains Mono', monospace" }}>
                   Max: {venue.capacity}
                 </span>
@@ -213,6 +249,31 @@ export default function SettingsPage() {
                 >
                   {venue.isActive ? "ปิด" : "เปิด"}
                 </Button>
+                {/* Delete button — disabled if venue has been used in any class */}
+                {confirmDeleteV !== venue.id ? (
+                  <button
+                    onClick={() => { if (deletableVenues[venue.id] !== false) setConfirmDeleteV(venue.id); }}
+                    title={deletableVenues[venue.id] === false ? "ไม่สามารถลบได้: สนามนี้ถูกใช้งานในคลาสอยู่แล้ว" : "ลบสนาม"}
+                    style={{
+                      fontSize: 12, padding: "3px 7px", borderRadius: 5, cursor: deletableVenues[venue.id] === false ? "not-allowed" : "pointer",
+                      border: `1.5px solid ${deletableVenues[venue.id] === false ? "var(--bd2)" : "var(--red)"}`,
+                      color: deletableVenues[venue.id] === false ? "var(--tm)" : "var(--red)",
+                      background: "none", opacity: deletableVenues[venue.id] === false ? 0.4 : 1,
+                    }}
+                  >🗑️</button>
+                ) : (
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ fontSize: 10, color: "var(--red)", fontWeight: 600 }}>ยืนยันลบ?</span>
+                    <button
+                      onClick={() => handleDeleteVenue(venue.id)} disabled={deletingV}
+                      style={{ fontSize: 10, padding: "3px 8px", borderRadius: 5, cursor: "pointer", background: "var(--red)", color: "#fff", border: "none", fontFamily: "inherit" }}
+                    >{deletingV ? "..." : "ลบ"}</button>
+                    <button
+                      onClick={() => setConfirmDeleteV(null)}
+                      style={{ fontSize: 10, padding: "3px 8px", borderRadius: 5, cursor: "pointer", background: "none", border: "1.5px solid var(--bd)", color: "var(--t2)", fontFamily: "inherit" }}
+                    >ยกเลิก</button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -265,7 +326,7 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
-              <div style={{ display: "flex", gap: 6 }}>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 <Button variant="ghost" size="sm" onClick={() => openEditCoach(coach)}>แก้ไข</Button>
                 <Button
                   variant={coach.isActive ? "danger" : "success"}
@@ -274,6 +335,31 @@ export default function SettingsPage() {
                 >
                   {coach.isActive ? "ปิด" : "เปิด"}
                 </Button>
+                {/* Delete button — disabled if coach has been used in any class */}
+                {confirmDeleteC !== coach.id ? (
+                  <button
+                    onClick={() => { if (deletableCoaches[coach.id] !== false) setConfirmDeleteC(coach.id); }}
+                    title={deletableCoaches[coach.id] === false ? "ไม่สามารถลบได้: โค้ชคนนี้ถูกใช้งานในคลาสอยู่แล้ว" : "ลบโค้ช"}
+                    style={{
+                      fontSize: 12, padding: "3px 7px", borderRadius: 5, cursor: deletableCoaches[coach.id] === false ? "not-allowed" : "pointer",
+                      border: `1.5px solid ${deletableCoaches[coach.id] === false ? "var(--bd2)" : "var(--red)"}`,
+                      color: deletableCoaches[coach.id] === false ? "var(--tm)" : "var(--red)",
+                      background: "none", opacity: deletableCoaches[coach.id] === false ? 0.4 : 1,
+                    }}
+                  >🗑️</button>
+                ) : (
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ fontSize: 10, color: "var(--red)", fontWeight: 600 }}>ยืนยันลบ?</span>
+                    <button
+                      onClick={() => handleDeleteCoach(coach.id)} disabled={deletingC}
+                      style={{ fontSize: 10, padding: "3px 8px", borderRadius: 5, cursor: "pointer", background: "var(--red)", color: "#fff", border: "none", fontFamily: "inherit" }}
+                    >{deletingC ? "..." : "ลบ"}</button>
+                    <button
+                      onClick={() => setConfirmDeleteC(null)}
+                      style={{ fontSize: 10, padding: "3px 8px", borderRadius: 5, cursor: "pointer", background: "none", border: "1.5px solid var(--bd)", color: "var(--t2)", fontFamily: "inherit" }}
+                    >ยกเลิก</button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
