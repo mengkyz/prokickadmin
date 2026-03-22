@@ -18,109 +18,206 @@ import {
   type PaymentSummary,
 } from "@/lib/db/payments";
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function paymentTypeLabel(type: string | null): { icon: string; label: string } {
+  if (type === "extra_session") return { icon: "🎫", label: "ซื้อคลาสเพิ่มเติม" };
+  if (type === "package")       return { icon: "📦", label: "ซื้อแพ็กเกจ" };
+  return { icon: "💳", label: "ชำระเงิน" };
+}
+
+function packageTypeLabel(type: string | null): string {
+  if (type === "adult")  return "Adult";
+  if (type === "junior") return "Junior";
+  return type ?? "";
+}
+
 // ── Slip detail modal ─────────────────────────────────────────────────────────
 function SlipDetailModal({ payment, onClose }: { payment: AdminPayment | null; onClose: () => void }) {
   if (!payment) return null;
-  const sending  = bankInfo(payment.sendingBank);
+  const sending   = bankInfo(payment.sendingBank);
   const receiving = bankInfo(payment.receivingBank);
+  const ptLabel   = paymentTypeLabel(payment.paymentType);
+  const ok        = payment.slipokSuccess;
 
-  const row = (label: string, value: string | number | null | undefined) =>
-    value ? (
-      <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--bd)" }}>
+  const InfoRow = ({ label, value }: { label: string; value: string | number | null | undefined }) =>
+    value != null && value !== "" ? (
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "5px 0", borderBottom: "1px solid var(--bd)" }}>
         <div style={{ fontSize: 11, color: "var(--tm)", flexShrink: 0, marginRight: 12 }}>{label}</div>
         <div style={{ fontSize: 11, fontWeight: 600, textAlign: "right", wordBreak: "break-all" }}>{value}</div>
       </div>
     ) : null;
 
+  const SectionLabel = ({ children }: { children: React.ReactNode }) => (
+    <div style={{ fontSize: 9, fontWeight: 700, color: "var(--tm)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, marginTop: 2 }}>
+      {children}
+    </div>
+  );
+
   return (
-    <Modal open={!!payment} onClose={onClose} title="🧾 รายละเอียดสลิป" width={480}
+    <Modal open={!!payment} onClose={onClose} title="🧾 รายละเอียดสลิป" width={500}
       footer={<DefaultFooter onCancel={onClose} onConfirm={onClose} confirmLabel="ปิด" />}
     >
-      {/* Status banner */}
+      {/* ── Status banner ── */}
       <div style={{
-        display: "flex", alignItems: "center", gap: 10,
-        padding: "10px 14px", borderRadius: 8, marginBottom: 14,
-        background: payment.slipokSuccess ? "var(--green-l)" : "var(--red-l)",
-        border: `1.5px solid ${payment.slipokSuccess ? "var(--green)" : "var(--red)"}`,
+        display: "flex", alignItems: "flex-start", gap: 10,
+        padding: "11px 14px", borderRadius: 10, marginBottom: 14,
+        background: ok ? "var(--green-l)" : "var(--red-l)",
+        border: `1.5px solid ${ok ? "var(--green)" : "var(--red)"}`,
       }}>
-        <div style={{ fontSize: 18 }}>{payment.slipokSuccess ? "✅" : "❌"}</div>
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: payment.slipokSuccess ? "var(--green)" : "var(--red)" }}>
-            {payment.slipokSuccess ? "ยืนยันสลิปสำเร็จ" : "ยืนยันสลิปล้มเหลว"}
+        <div style={{ fontSize: 20, lineHeight: 1, marginTop: 1 }}>{ok ? "✅" : "❌"}</div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: ok ? "var(--green)" : "var(--red)" }}>
+            {ok ? "ยืนยันสลิปสำเร็จ" : "ยืนยันสลิปล้มเหลว"}
           </div>
           {payment.slipokMessage && (
-            <div style={{ fontSize: 10, color: "var(--tm)", marginTop: 1 }}>{payment.slipokMessage}</div>
+            <div style={{ fontSize: 10, color: "var(--tm)", marginTop: 2 }}>{payment.slipokMessage}</div>
           )}
-          {!payment.slipokSuccess && payment.errorCode && (
-            <div style={{ fontSize: 10, color: "var(--red)", marginTop: 1 }}>
-              รหัสข้อผิดพลาด: {payment.errorCode} — {payment.errorMessage ?? ""}
+          {!ok && payment.errorCode && (
+            <div style={{ fontSize: 10, color: "var(--red)", marginTop: 3, fontWeight: 600 }}>
+              รหัส {payment.errorCode}{payment.errorMessage ? ` — ${payment.errorMessage}` : ""}
+            </div>
+          )}
+          {!ok && payment.failureReason && (
+            <div style={{ fontSize: 10, color: "var(--red)", marginTop: 2 }}>
+              {payment.failureReason}
             </div>
           )}
         </div>
       </div>
 
-      {/* Amount */}
-      {payment.amount != null && (
-        <div style={{ textAlign: "center", padding: "10px 0 14px", borderBottom: "1px solid var(--bd)", marginBottom: 10 }}>
-          <div style={{ fontSize: 11, color: "var(--tm)", marginBottom: 2 }}>ยอดชำระ</div>
-          <div style={{ fontSize: 28, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: "var(--green)" }}>
-            {payment.amount.toLocaleString()} ฿
+      {/* ── Amount ── */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 16,
+        padding: "12px 0 14px", borderBottom: "1px solid var(--bd)", marginBottom: 14,
+      }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 10, color: "var(--tm)", marginBottom: 3 }}>ยอดชำระ</div>
+          <div style={{ fontSize: 30, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: ok ? "var(--green)" : "var(--red)", lineHeight: 1 }}>
+            {payment.amount != null ? `${payment.amount.toLocaleString()} ฿` : "— ฿"}
           </div>
         </div>
-      )}
-
-      {/* Transaction info */}
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: "var(--tm)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>ข้อมูลรายการ</div>
-        {row("เลขอ้างอิง", payment.transRef)}
-        {row("วัน/เวลา (สลิป)", formatSlipDateTime(payment.transDate, payment.transTime))}
-        {row("วันที่รับแจ้ง", payment.displayCreated)}
-        {row("Ref 1", payment.ref1)}
-        {row("Ref 2", payment.ref2)}
-        {row("Ref 3", payment.ref3)}
-      </div>
-
-      {/* Sender */}
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: "var(--tm)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>ผู้โอน</div>
-        <div style={{ padding: "8px 10px", background: "var(--bg)", borderRadius: 7, border: "1.5px solid var(--bd)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-            <div style={{ width: 8, height: 8, borderRadius: "50%", background: sending.color, flexShrink: 0 }} />
-            <div style={{ fontSize: 11, fontWeight: 700 }}>{sending.short}</div>
-            <div style={{ fontSize: 10, color: "var(--tm)" }}>{sending.full}</div>
+        {payment.expectedAmount != null && payment.expectedAmount !== payment.amount && (
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 10, color: "var(--tm)", marginBottom: 3 }}>ยอดที่คาดหวัง</div>
+            <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--tm)" }}>
+              {payment.expectedAmount.toLocaleString()} ฿
+            </div>
           </div>
-          {payment.senderName && <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 2 }}>{payment.senderName}</div>}
-          {payment.senderAccount && <div style={{ fontSize: 10, color: "var(--tm)", fontFamily: "'JetBrains Mono', monospace" }}>{payment.senderAccount}</div>}
-        </div>
+        )}
       </div>
 
-      {/* Receiver */}
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: "var(--tm)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>ผู้รับ</div>
-        <div style={{ padding: "8px 10px", background: "var(--bg)", borderRadius: 7, border: "1.5px solid var(--bd)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-            <div style={{ width: 8, height: 8, borderRadius: "50%", background: receiving.color, flexShrink: 0 }} />
-            <div style={{ fontSize: 11, fontWeight: 700 }}>{receiving.short}</div>
-            <div style={{ fontSize: 10, color: "var(--tm)" }}>{receiving.full}</div>
+      {/* ── Purchase info ── */}
+      <div style={{ marginBottom: 14 }}>
+        <SectionLabel>สินค้าที่ซื้อ</SectionLabel>
+        <div style={{
+          padding: "10px 12px", borderRadius: 9,
+          background: "var(--bg)", border: "1.5px solid var(--bd)",
+          display: "flex", flexDirection: "column", gap: 7,
+        }}>
+          {/* Type + package name */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 18 }}>{ptLabel.icon}</span>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>
+                {payment.packageName
+                  ? `${payment.packageName}${payment.packageType ? ` (${packageTypeLabel(payment.packageType)})` : ""}`
+                  : ptLabel.label}
+              </div>
+              {payment.packageSessions && (
+                <div style={{ fontSize: 10, color: "var(--tm)" }}>
+                  {payment.packageSessions} ครั้ง
+                  {payment.remainingSessions != null ? ` · คงเหลือ ${payment.remainingSessions} ครั้ง` : ""}
+                </div>
+              )}
+              {!payment.packageName && payment.paymentType === "package" && (
+                <div style={{ fontSize: 10, color: "var(--tm)" }}>{ptLabel.label}</div>
+              )}
+            </div>
           </div>
-          {payment.receiverName && <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 2 }}>{payment.receiverName}</div>}
-          {payment.receiverAccount && <div style={{ fontSize: 10, color: "var(--tm)", fontFamily: "'JetBrains Mono', monospace" }}>{payment.receiverAccount}</div>}
+
+          {/* Child info */}
+          {payment.childName && (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 8,
+              paddingTop: 7, borderTop: "1px dashed var(--bd)",
+            }}>
+              <span style={{ fontSize: 15 }}>👶</span>
+              <div>
+                <div style={{ fontSize: 10, color: "var(--tm)" }}>ซื้อให้</div>
+                <div style={{ fontSize: 12, fontWeight: 700 }}>{payment.childName}</div>
+              </div>
+            </div>
+          )}
+
+          {/* Buyer */}
+          {payment.userName && (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 8,
+              paddingTop: 7, borderTop: "1px dashed var(--bd)",
+            }}>
+              <div style={{
+                width: 26, height: 26, borderRadius: "50%",
+                background: payment.avatarColor, flexShrink: 0,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 9, fontWeight: 700, color: "#fff",
+              }}>
+                {payment.avatarInitial}
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: "var(--tm)" }}>{payment.childName ? "ผู้ปกครอง" : "ผู้ซื้อ"}</div>
+                <div style={{ fontSize: 12, fontWeight: 600 }}>{payment.userName}</div>
+                {payment.userPhone && <div style={{ fontSize: 10, color: "var(--tm)" }}>{payment.userPhone}</div>}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Linked user */}
-      {payment.userName && (
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 700, color: "var(--tm)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>ผู้ใช้ที่เชื่อมโยง</div>
-          {row("ชื่อ", payment.userName)}
-          {row("โทร", payment.userPhone)}
+      {/* ── Bank transfer ── */}
+      <div style={{ marginBottom: 14 }}>
+        <SectionLabel>การโอนเงิน</SectionLabel>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 8, alignItems: "center" }}>
+          {/* Sender */}
+          <div style={{ padding: "9px 10px", background: "var(--bg)", borderRadius: 8, border: "1.5px solid var(--bd)" }}>
+            <div style={{ fontSize: 9, color: "var(--tm)", marginBottom: 4 }}>ผู้โอน</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 3 }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: sending.color, flexShrink: 0 }} />
+              <div style={{ fontSize: 11, fontWeight: 700 }}>{sending.short}</div>
+              <div style={{ fontSize: 9, color: "var(--tm)" }}>{sending.full}</div>
+            </div>
+            {payment.senderName && <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 1 }}>{payment.senderName}</div>}
+            {payment.senderAccount && <div style={{ fontSize: 10, color: "var(--tm)", fontFamily: "'JetBrains Mono', monospace" }}>{payment.senderAccount}</div>}
+          </div>
+          <div style={{ fontSize: 16, color: "var(--tm)", textAlign: "center" }}>→</div>
+          {/* Receiver */}
+          <div style={{ padding: "9px 10px", background: "var(--bg)", borderRadius: 8, border: "1.5px solid var(--bd)" }}>
+            <div style={{ fontSize: 9, color: "var(--tm)", marginBottom: 4 }}>ผู้รับ</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 3 }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: receiving.color, flexShrink: 0 }} />
+              <div style={{ fontSize: 11, fontWeight: 700 }}>{receiving.short}</div>
+              <div style={{ fontSize: 9, color: "var(--tm)" }}>{receiving.full}</div>
+            </div>
+            {payment.receiverName && <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 1 }}>{payment.receiverName}</div>}
+            {payment.receiverAccount && <div style={{ fontSize: 10, color: "var(--tm)", fontFamily: "'JetBrains Mono', monospace" }}>{payment.receiverAccount}</div>}
+          </div>
         </div>
-      )}
+      </div>
 
-      {/* Note */}
+      {/* ── Transaction details ── */}
+      <div style={{ marginBottom: 10 }}>
+        <SectionLabel>ข้อมูลรายการ</SectionLabel>
+        <InfoRow label="เลขอ้างอิง" value={payment.transRef} />
+        <InfoRow label="วัน/เวลา (สลิป)" value={formatSlipDateTime(payment.transDate, payment.transTime)} />
+        <InfoRow label="วันที่รับแจ้ง" value={payment.displayCreated} />
+        <InfoRow label="Ref 1" value={payment.ref1} />
+        <InfoRow label="Ref 2" value={payment.ref2} />
+        <InfoRow label="Ref 3" value={payment.ref3} />
+      </div>
+
+      {/* ── Note ── */}
       {payment.note && (
-        <div style={{ marginTop: 8, padding: "8px 10px", background: "var(--bg)", borderRadius: 7, border: "1.5px solid var(--bd)" }}>
-          <div style={{ fontSize: 10, color: "var(--tm)", marginBottom: 2 }}>หมายเหตุ</div>
+        <div style={{ padding: "9px 12px", background: "var(--bg)", borderRadius: 8, border: "1.5px solid var(--bd)" }}>
+          <div style={{ fontSize: 9, color: "var(--tm)", marginBottom: 3, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>หมายเหตุ</div>
           <div style={{ fontSize: 11 }}>{payment.note}</div>
         </div>
       )}

@@ -70,7 +70,13 @@ interface PaymentRow {
   user_id: string | null;
   child_id: string | null;
   package_id: string | null;
-  slipok_success: boolean;
+  // Legacy columns (older records)
+  success?: boolean | null;
+  api_response?: Record<string, unknown> | null;
+  actual_amount?: number | null;
+  failure_reason?: string | null;
+  // New SlipOK columns (post-migration)
+  slipok_success?: boolean | null;
   slipok_message: string | null;
   trans_ref: string | null;
   trans_date: string | null;
@@ -90,8 +96,16 @@ interface PaymentRow {
   error_message: string | null;
   note: string | null;
   raw_response: Record<string, unknown> | null;
+  // Legacy extra columns
+  payment_type?: string | null;
+  expected_amount?: number | null;
   // joined
   profiles?: { full_name: string; phone_number: string | null } | null;
+  child_profiles?: { nickname: string } | null;
+  user_packages?: {
+    remaining_sessions: number;
+    package_templates: { name: string; type: string; session_count: number; extra_session_price: number } | null;
+  } | null;
 }
 
 // ── Public type ───────────────────────────────────────────────────────────────
@@ -119,8 +133,17 @@ export interface AdminPayment {
   ref3: string | null;
   errorCode: number | null;
   errorMessage: string | null;
+  failureReason: string | null;
   note: string | null;
   rawResponse: Record<string, unknown> | null;
+  // purchase context
+  paymentType: string | null;
+  expectedAmount: number | null;
+  packageName: string | null;
+  packageType: string | null;
+  packageSessions: number | null;
+  remainingSessions: number | null;
+  childName: string | null;
   // derived
   userName: string | null;
   userPhone: string | null;
@@ -140,14 +163,23 @@ export interface PaymentSummary {
 // ── Converter ─────────────────────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function rawData(row: PaymentRow): any {
-  return (row.raw_response as any)?.data ?? {};
+  // Prefer raw_response.data (new), fall back to api_response.data (legacy)
+  return (row.raw_response as any)?.data
+      ?? (row.api_response as any)?.data
+      ?? {};
 }
 
 function rowToAdminPayment(row: PaymentRow): AdminPayment {
   const rd = rawData(row);
 
-  // Prefer dedicated columns (post-migration); fall back to raw_response.data
-  const slipokSuccess  = row.slipok_success  ?? (rd.success === true);
+  // Prefer dedicated columns (post-migration); fall back to raw_response/api_response data.
+  // slipok_success defaults to false in DB for old records that pre-date the migration,
+  // so we can't use ?? (which only catches null/undefined). Use explicit true check instead:
+  // if slipok_success is explicitly true → confirmed; otherwise fall back to legacy `success`
+  // column or api_response.data.success.
+  const slipokSuccess  = row.slipok_success === true
+    ? true
+    : (row.success === true || rd.success === true);
   const slipokMessage  = row.slipok_message  ?? rd.message  ?? null;
   const transRef       = row.trans_ref       ?? rd.transRef  ?? null;
   const transDate      = row.trans_date      ?? rd.transDate ?? null;
@@ -159,7 +191,7 @@ function rowToAdminPayment(row: PaymentRow): AdminPayment {
   const senderAccount  = row.sender_account  ?? rd.sender?.account?.value ?? null;
   const receiverName   = row.receiver_name   ?? rd.receiver?.displayName ?? rd.receiver?.name ?? null;
   const receiverAccount = row.receiver_account ?? rd.receiver?.account?.value ?? null;
-  const amount         = row.amount          ?? rd.amount ?? null;
+  const amount         = row.amount          ?? row.actual_amount ?? rd.amount ?? null;
   const ref1           = row.ref1            ?? rd.ref1   ?? null;
   const ref2           = row.ref2            ?? rd.ref2   ?? null;
   const ref3           = row.ref3            ?? rd.ref3   ?? null;
@@ -190,8 +222,16 @@ function rowToAdminPayment(row: PaymentRow): AdminPayment {
     ref3,
     errorCode: row.error_code ?? null,
     errorMessage: row.error_message ?? null,
+    failureReason: row.failure_reason ?? null,
     note: row.note ?? null,
     rawResponse: row.raw_response,
+    paymentType: row.payment_type ?? null,
+    expectedAmount: row.expected_amount ?? row.actual_amount ?? null,
+    packageName: row.user_packages?.package_templates?.name ?? null,
+    packageType: row.user_packages?.package_templates?.type ?? null,
+    packageSessions: row.user_packages?.package_templates?.session_count ?? null,
+    remainingSessions: row.user_packages?.remaining_sessions ?? null,
+    childName: row.child_profiles?.nickname ?? null,
     userName: row.profiles?.full_name ?? null,
     userPhone: row.profiles?.phone_number ?? null,
     avatarColor: avatarColor(name ?? "?"),
@@ -211,7 +251,7 @@ export async function fetchPayments(opts?: {
 }): Promise<AdminPayment[]> {
   let query = getSupabaseClient()
     .from("payment_logs")
-    .select(`*, profiles(full_name, phone_number)`)
+    .select(`*, profiles(full_name, phone_number), child_profiles(nickname), user_packages(remaining_sessions, package_templates(name, type, session_count, extra_session_price))`)
     .order("created_at", { ascending: false })
     .limit(opts?.limit ?? 200);
 
