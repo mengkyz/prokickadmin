@@ -4,17 +4,15 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Modal, FormGrid, FormItem, DefaultFooter } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { ProgressBar } from "@/components/ui/ProgressBar";
 import { useToast } from "@/lib/context/ToastContext";
 import {
   fetchUserPackages,
   fetchUserBookings,
+  fetchAdminLogs,
   updateChildProfile,
-  adjustPackageSessions,
-  togglePackageStatus,
-  extendPackage,
 } from "@/lib/db/users";
-import type { AdminChild, AdminPackage, AdminBooking } from "@/lib/db/users";
+import type { AdminChild, AdminPackage, AdminBooking, AdminLog } from "@/lib/db/users";
+import { PackageEditorSection } from "./PackageEditorSection";
 
 interface Props {
   open: boolean;
@@ -39,25 +37,6 @@ function attLabel(s: string) {
   return "Confirmed";
 }
 
-type PkgStatus = "Active" | "Low" | "Expired" | "Inactive";
-
-function derivePkgStatus(pkg: AdminPackage): PkgStatus {
-  if (pkg.status === "inactive") return "Inactive";
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const expiry = new Date(pkg.expiryDate);
-  if (expiry < today || pkg.status === "expired") return "Expired";
-  const daysLeft = Math.ceil((expiry.getTime() - today.getTime()) / 86_400_000);
-  if (pkg.remainingSessions <= 2 || daysLeft <= 7) return "Low";
-  return "Active";
-}
-
-function statusVariant(s: PkgStatus): "green"|"orange"|"red"|"gray" {
-  if (s === "Active")   return "green";
-  if (s === "Low")      return "orange";
-  if (s === "Expired")  return "red";
-  return "gray";
-}
-
 export function UserChildModal({ open, onClose, child, onSaved }: Props) {
   const { showToast } = useToast();
   const [tab, setTab] = useState(0);
@@ -77,17 +56,7 @@ export function UserChildModal({ open, onClose, child, onSaved }: Props) {
   const [bookings,     setBookings]     = useState<AdminBooking[]>([]);
   const [loadingPkg,   setLoadingPkg]   = useState(false);
   const [loadingBk,    setLoadingBk]    = useState(false);
-
-  // ── Selected package ──────────────────────────────────
-  const [selectedId,   setSelectedId]   = useState<string | null>(null);
-  const [adjSessions,  setAdjSessions]  = useState(0);
-  const [adjExtra,     setAdjExtra]     = useState(0);
-  const [adjNote,      setAdjNote]      = useState("");
-  const [savingAdj,    setSavingAdj]    = useState(false);
-  const [extDays,      setExtDays]      = useState("");
-  const [extNewDate,   setExtNewDate]   = useState("");
-  const [savingExt,    setSavingExt]    = useState(false);
-  const [savingToggle, setSavingToggle] = useState(false);
+  const [logs,         setLogs]         = useState<AdminLog[]>([]);
 
   // Sync form when child prop changes
   useEffect(() => {
@@ -102,34 +71,16 @@ export function UserChildModal({ open, onClose, child, onSaved }: Props) {
     }
   }, [child]);
 
-  // On packages load: pick active or first
-  useEffect(() => {
-    if (packages.length === 0) { setSelectedId(null); return; }
-    if (!selectedId || !packages.find((p) => p.id === selectedId)) {
-      const active = packages.find((p) => p.status === "active");
-      const picked = active ?? packages[0];
-      setSelectedId(picked.id);
-      setAdjSessions(picked.remainingSessions);
-      setAdjExtra(picked.extraSessionsPurchased);
-    }
-  }, [packages]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const pkg = packages.find((p) => p.id === selectedId) ?? null;
-
-  // Sync adjSessions/adjExtra when selected pkg changes
-  useEffect(() => {
-    if (pkg) {
-      setAdjSessions(pkg.remainingSessions);
-      setAdjExtra(pkg.extraSessionsPurchased);
-    }
-  }, [pkg?.remainingSessions, pkg?.extraSessionsPurchased]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const loadPackages = useCallback(async () => {
     if (!child) return;
     setLoadingPkg(true);
     try {
-      const pkgs = await fetchUserPackages(child.parentId, child.id);
+      const [pkgs, adminLogs] = await Promise.all([
+        fetchUserPackages(child.parentId, child.id),
+        fetchAdminLogs(child.parentId, child.id),
+      ]);
       setPackages(pkgs);
+      setLogs(adminLogs);
     } catch (err) { showToast((err as Error).message, "error"); }
     finally { setLoadingPkg(false); }
   }, [child, showToast]);
@@ -165,49 +116,6 @@ export function UserChildModal({ open, onClose, child, onSaved }: Props) {
     finally { setSavingProfile(false); }
   }
 
-  async function handleToggle() {
-    if (!child || !pkg) return;
-    setSavingToggle(true);
-    try {
-      const newStatus = pkg.status === "inactive" ? "active" : "inactive";
-      await togglePackageStatus(pkg.id, child.parentId, newStatus);
-      showToast(newStatus === "active" ? "เปิดใช้แพ็กเกจแล้ว" : "ปิดใช้แพ็กเกจแล้ว");
-      await loadPackages();
-    } catch (err) { showToast((err as Error).message, "error"); }
-    finally { setSavingToggle(false); }
-  }
-
-  async function handleExtend() {
-    if (!child || !pkg) return;
-    setSavingExt(true);
-    try {
-      let newDate = extNewDate;
-      if (!newDate && extDays) {
-        const d = new Date(pkg.expiryDate);
-        d.setDate(d.getDate() + Number(extDays));
-        newDate = d.toISOString().split("T")[0];
-      }
-      if (!newDate) { showToast("ระบุวันหรือจำนวนวันที่ต้องการ", "error"); setSavingExt(false); return; }
-      await extendPackage(pkg.id, child.parentId, newDate);
-      showToast(`อัปเดตวันหมดอายุเป็น ${newDate} แล้ว`);
-      await loadPackages();
-      setExtDays(""); setExtNewDate("");
-    } catch (err) { showToast((err as Error).message, "error"); }
-    finally { setSavingExt(false); }
-  }
-
-  async function handleAdjust() {
-    if (!child || !pkg) return;
-    setSavingAdj(true);
-    try {
-      await adjustPackageSessions(pkg.id, child.parentId, adjSessions, adjExtra, adjNote);
-      showToast("บันทึกแล้ว");
-      await loadPackages();
-      setAdjNote("");
-    } catch (err) { showToast((err as Error).message, "error"); }
-    finally { setSavingAdj(false); }
-  }
-
   function calcAge(dob: string | null) {
     if (!dob) return null;
     return new Date().getFullYear() - new Date(dob).getFullYear();
@@ -215,29 +123,6 @@ export function UserChildModal({ open, onClose, child, onSaved }: Props) {
 
   if (!child) return null;
   const age = calcAge(child.birthDate);
-
-  const pkgStatus = pkg ? derivePkgStatus(pkg) : null;
-  const isExpired = pkgStatus === "Expired";
-
-  const sortedPkgs = [...packages].sort((a, b) => {
-    const order = (s: string) => (s === "active" ? 0 : s === "inactive" ? 1 : 2);
-    return order(a.status) - order(b.status);
-  });
-
-  // Preview new expiry date for hint
-  const previewDate: Date | null = (() => {
-    if (extNewDate) return new Date(extNewDate);
-    if (extDays && pkg) {
-      const d = new Date(pkg.expiryDate);
-      d.setDate(d.getDate() + Number(extDays));
-      return d;
-    }
-    return null;
-  })();
-  const todayCheck = new Date(); todayCheck.setHours(0, 0, 0, 0);
-  const showActivateHint = isExpired && previewDate !== null && previewDate >= todayCheck;
-
-  const sessionsUsed = pkg ? pkg.totalSessions - pkg.remainingSessions : 0;
 
   return (
     <Modal
@@ -316,139 +201,32 @@ export function UserChildModal({ open, onClose, child, onSaved }: Props) {
           {tab === 1 && (
             loadingPkg ? (
               <div style={{ textAlign: "center", padding: 32, color: "var(--tm)" }}>กำลังโหลด...</div>
-            ) : packages.length === 0 ? (
-              <div style={{ textAlign: "center", padding: 32, color: "var(--tm)", fontSize: 13 }}>ยังไม่มีแพ็กเกจ</div>
             ) : (
               <>
-                {/* Package selector dropdown if more than 1 */}
-                {packages.length > 1 && (
-                  <div style={{ marginBottom: 10 }}>
-                    <select
-                      value={selectedId ?? ""}
-                      onChange={(e) => setSelectedId(e.target.value)}
-                      style={{ width: "100%", fontSize: 12, padding: "6px 9px" }}
-                    >
-                      {sortedPkgs.map((p) => {
-                        const st = derivePkgStatus(p);
-                        const expLabel = p.expiryDate ? `หมด ${p.expiryDate}` : "";
-                        return (
-                          <option key={p.id} value={p.id}>
-                            {p.packageName} · {st} · {expLabel}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </div>
-                )}
-
-                {pkg && (
-                  <div style={{ border: "1.5px solid var(--bd2)", borderRadius: 9, padding: 14 }}>
-                    {/* Package name + badge + toggle */}
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700 }}>{pkg.packageName}</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                        <Badge variant={statusVariant(pkgStatus ?? "Active")}>● {pkgStatus}</Badge>
-                        {!isExpired && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            style={{
-                              fontSize: 10,
-                              padding: "3px 9px",
-                              border: pkg.status === "inactive"
-                                ? "1.5px solid var(--green)"
-                                : "1.5px solid var(--red)",
-                              color: pkg.status === "inactive" ? "var(--green)" : "var(--red)",
-                            }}
-                            onClick={handleToggle}
-                            disabled={savingToggle}
-                          >
-                            {savingToggle ? "..." : pkg.status === "inactive" ? "เปิดใช้" : "ปิดใช้"}
-                          </Button>
-                        )}
+                <PackageEditorSection
+                  packages={packages}
+                  userId={child.parentId}
+                  childId={child.id}
+                  onRefresh={loadPackages}
+                />
+                {/* Admin log — child-specific */}
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--tm)", textTransform: "uppercase", marginBottom: 7 }}>📋 LOG การแก้ไข</div>
+                  {logs.length === 0 ? (
+                    <div style={{ fontSize: 12, color: "var(--tm)", padding: "12px 0" }}>ยังไม่มี log</div>
+                  ) : logs.slice(0, 10).map((entry, i) => (
+                    <div key={entry.id} style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "8px 0", borderBottom: i < Math.min(logs.length, 10) - 1 ? "1px solid var(--bd)" : "none", fontSize: 11 }}>
+                      <div style={{ width: 7, height: 7, borderRadius: "50%", background: entry.dotColor, flexShrink: 0, marginTop: 2 }} />
+                      <div style={{ color: "var(--tm)", fontFamily: "'JetBrains Mono',monospace", minWidth: 110, flexShrink: 0, fontSize: 10 }}>
+                        {new Date(entry.createdAt).toLocaleString("th-TH", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{entry.action}</div>
+                        <div style={{ color: "var(--t2)", fontSize: 10 }}>{entry.detail}</div>
                       </div>
                     </div>
-
-                    {/* Dates */}
-                    <div style={{ fontSize: 11, color: "var(--tm)", marginBottom: 8 }}>
-                      {pkg.startDate} – {pkg.expiryDate}
-                    </div>
-
-                    {/* Progress bar */}
-                    <ProgressBar value={sessionsUsed} max={pkg.totalSessions} />
-
-                    {/* Stat cards */}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 9, margin: "10px 0" }}>
-                      {[
-                        { v: pkg.remainingSessions, l: "Sessions คงเหลือ", c: "var(--green)" },
-                        { v: pkg.extraSessionsPurchased, l: "Extra", c: "var(--blue)" },
-                        { v: sessionsUsed, l: "ใช้ไปแล้ว", c: "var(--tm)" },
-                      ].map((s, i) => (
-                        <div key={i} style={{ background: "var(--bg)", border: "1.5px solid var(--bd)", borderRadius: 8, padding: 10, textAlign: "center" }}>
-                          <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "'JetBrains Mono',monospace", color: s.c }}>{s.v}</div>
-                          <div style={{ fontSize: 9, color: "var(--tm)", marginTop: 2, fontWeight: 600, textTransform: "uppercase" }}>{s.l}</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Adjust Expiry */}
-                    <div style={{ background: "var(--bg)", border: "1.5px solid var(--bd)", borderRadius: 8, padding: 11, marginBottom: 9 }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--tm)", marginBottom: 8 }}>📅 ปรับวันหมดอายุ</div>
-                      <div style={{ display: "grid", gridTemplateColumns: "70px auto 1fr auto", gap: 7, alignItems: "end" }}>
-                        <div>
-                          <div style={{ fontSize: 9, color: "var(--tm)", marginBottom: 2 }}>±วัน</div>
-                          <input
-                            type="number"
-                            placeholder="±7"
-                            value={extDays}
-                            onChange={(e) => { setExtDays(e.target.value); setExtNewDate(""); }}
-                            style={{ width: "100%", fontSize: 11, padding: "5px 6px", textAlign: "center" }}
-                          />
-                        </div>
-                        <div style={{ fontSize: 11, color: "var(--tm)", paddingBottom: 6, paddingLeft: 2, paddingRight: 2 }}>หรือ</div>
-                        <div>
-                          <div style={{ fontSize: 9, color: "var(--tm)", marginBottom: 2 }}>วันที่ใหม่</div>
-                          <input
-                            type="date"
-                            value={extNewDate}
-                            onChange={(e) => { setExtNewDate(e.target.value); setExtDays(""); }}
-                            style={{ width: "100%", fontSize: 11, padding: "5px 7px" }}
-                          />
-                        </div>
-                        <Button variant="primary" size="sm" onClick={handleExtend} disabled={savingExt}>
-                          {savingExt ? "..." : "บันทึก"}
-                        </Button>
-                      </div>
-                      {showActivateHint && (
-                        <div style={{ marginTop: 7, fontSize: 10, color: "var(--green)" }}>
-                          ℹ️ วันใหม่อยู่ในอนาคต — แพ็กเกจจะเปลี่ยนเป็น Active อัตโนมัติ
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Adjust Sessions */}
-                    <div style={{ background: "var(--bg)", border: "1.5px solid var(--bd)", borderRadius: 8, padding: 11 }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--tm)", marginBottom: 8 }}>🔧 Adjust Sessions / Extra</div>
-                      <div style={{ display: "grid", gridTemplateColumns: "auto auto 1fr auto", gap: 7, alignItems: "end" }}>
-                        <div>
-                          <div style={{ fontSize: 9, color: "var(--tm)", marginBottom: 2 }}>Sessions คงเหลือ</div>
-                          <input className="ie" type="number" value={adjSessions} min={0} onChange={(e) => setAdjSessions(Number(e.target.value))} />
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 9, color: "var(--tm)", marginBottom: 2 }}>Extra</div>
-                          <input className="ie" type="number" value={adjExtra} min={0} onChange={(e) => setAdjExtra(Number(e.target.value))} />
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 9, color: "var(--tm)", marginBottom: 2 }}>หมายเหตุ</div>
-                          <input type="text" placeholder="ระบุเหตุผล..." value={adjNote} onChange={(e) => setAdjNote(e.target.value)} style={{ fontSize: 11, padding: "5px 8px", width: "100%" }} />
-                        </div>
-                        <Button variant="primary" size="sm" onClick={handleAdjust} disabled={savingAdj}>
-                          {savingAdj ? "..." : "บันทึก"}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                  ))}
+                </div>
               </>
             )
           )}

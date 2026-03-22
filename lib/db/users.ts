@@ -85,6 +85,7 @@ interface AdminLogRow {
   id: string;
   created_at: string;
   user_id: string | null;
+  child_id: string | null;
   target_type: string;
   target_id: string;
   action: string;
@@ -463,19 +464,25 @@ export async function fetchUserBookings(userId: string, childId?: string | null)
 }
 
 // ── READ: Admin logs + transaction history ────────────────
-export async function fetchAdminLogs(userId: string): Promise<AdminLog[]> {
+export async function fetchAdminLogs(userId: string, childId?: string | null): Promise<AdminLog[]> {
   const sb = getSupabaseClient();
 
-  // Get admin logs
-  const { data: logs } = await sb
+  // Filter logs by child_id: null = parent-only logs; string = child-specific logs
+  let logQuery = sb
     .from("admin_logs")
     .select("*")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(30);
+  if (childId) {
+    logQuery = logQuery.eq("child_id", childId);
+  } else {
+    logQuery = logQuery.is("child_id", null);
+  }
+  const { data: logs } = await logQuery;
 
-  // Get payment transactions
-  const { data: txns } = await sb
+  // Payment transactions — parent-level only (no child_id filter)
+  const { data: txns } = childId ? { data: [] } : await sb
     .from("transactions")
     .select("*")
     .eq("user_id", userId)
@@ -505,6 +512,12 @@ export async function fetchAdminLogs(userId: string): Promise<AdminLog[]> {
     } else if (log.action === "profile_update") {
       dotColor = "var(--blue)";
       actionLabel = "แก้ไขข้อมูลผู้ใช้";
+    } else if (log.action === "insert_package") {
+      dotColor = "var(--green)";
+      actionLabel = "เพิ่มแพ็กเกจ";
+    } else if (log.action === "delete_package") {
+      dotColor = "var(--red)";
+      actionLabel = "ลบแพ็กเกจ";
     }
 
     result.push({
@@ -597,7 +610,8 @@ export async function adjustPackageSessions(
   userId: string,
   newSessions: number,
   newExtra: number,
-  note: string
+  note: string,
+  childId?: string | null
 ): Promise<void> {
   // Get current values first for delta calculation
   const { data: current, error: fe } = await getSupabaseClient()
@@ -618,6 +632,7 @@ export async function adjustPackageSessions(
 
   await writeAdminLog({
     userId,
+    childId: childId ?? null,
     targetType: "user_package",
     targetId: packageId,
     action: "adjust_sessions",
@@ -630,7 +645,8 @@ export async function adjustPackageSessions(
 export async function togglePackageStatus(
   packageId: string,
   userId: string,
-  newStatus: "active" | "inactive"
+  newStatus: "active" | "inactive",
+  childId?: string | null
 ): Promise<void> {
   const { error } = await getSupabaseClient()
     .from("user_packages")
@@ -641,6 +657,7 @@ export async function togglePackageStatus(
   const action = newStatus === "active" ? "activate_package" : "deactivate_package";
   await writeAdminLog({
     userId,
+    childId: childId ?? null,
     targetType: "user_package",
     targetId: packageId,
     action,
@@ -652,7 +669,8 @@ export async function extendPackage(
   packageId: string,
   userId: string,
   newExpiryDate: string,
-  note?: string
+  note?: string,
+  childId?: string | null
 ): Promise<void> {
   // Fetch current package to determine status update
   const { data: current, error: fe } = await getSupabaseClient()
@@ -685,6 +703,7 @@ export async function extendPackage(
 
   await writeAdminLog({
     userId,
+    childId: childId ?? null,
     targetType: "user_package",
     targetId: packageId,
     action: "extend",
@@ -692,9 +711,127 @@ export async function extendPackage(
   });
 }
 
+// ── Package templates (for admin "add package" form) ─────
+export interface PackageTemplateOption {
+  id: number;
+  name: string;
+  type: "adult" | "junior";
+  sessionCount: number;
+  daysValid: number;
+  price: number;
+}
+
+export async function fetchPackageTemplatesForAssign(): Promise<PackageTemplateOption[]> {
+  const { data, error } = await getSupabaseClient()
+    .from("package_templates")
+    .select("id, name, type, session_count, days_valid, price")
+    .order("type")
+    .order("price");
+  if (error) throw new Error(error.message);
+  return (data as any[]).map((r) => ({
+    id: r.id,
+    name: r.name,
+    type: r.type as "adult" | "junior",
+    sessionCount: r.session_count,
+    daysValid: r.days_valid,
+    price: r.price,
+  }));
+}
+
+export interface InsertPackageInput {
+  templateId: number;
+  startDate: string;
+  expiryDate: string;
+  notes?: string;
+}
+
+export async function insertUserPackage(
+  userId: string,
+  childId: string | null,
+  input: InsertPackageInput,
+  sessionCount: number
+): Promise<void> {
+  const { error } = await getSupabaseClient()
+    .from("user_packages")
+    .insert({
+      user_id: userId,
+      child_id: childId ?? null,
+      template_id: input.templateId,
+      remaining_sessions: sessionCount,
+      extra_sessions_purchased: 0,
+      start_date: input.startDate,
+      expiry_date: input.expiryDate,
+      status: "active",
+      notes: input.notes ?? null,
+    });
+  if (error) throw new Error(error.message);
+
+  await writeAdminLog({
+    userId,
+    childId: childId ?? null,
+    targetType: "user_package",
+    targetId: userId,
+    action: "insert_package",
+    note: `เพิ่มแพ็กเกจ template #${input.templateId}${input.notes ? " · " + input.notes : ""}`,
+  });
+}
+
+// Batch-check which packages are safe to delete (no payment/transaction refs)
+export async function checkPackagesDeletable(packageIds: string[]): Promise<Record<string, boolean>> {
+  if (packageIds.length === 0) return {};
+  const sb = getSupabaseClient();
+  const [{ data: payData }, { data: txData }] = await Promise.all([
+    sb.from("payment_logs").select("package_id").in("package_id", packageIds),
+    sb.from("transactions").select("related_package_id").in("related_package_id", packageIds),
+  ]);
+  const blockedByPay = new Set((payData ?? []).map((r: any) => r.package_id).filter(Boolean));
+  const blockedByTx  = new Set((txData  ?? []).map((r: any) => r.related_package_id).filter(Boolean));
+  const result: Record<string, boolean> = {};
+  for (const id of packageIds) result[id] = !blockedByPay.has(id) && !blockedByTx.has(id);
+  return result;
+}
+
+export async function deleteUserPackage(packageId: string, userId: string, childId?: string | null): Promise<void> {
+  const sb = getSupabaseClient();
+
+  // Block if any payment_logs reference this package
+  const { count: payCount } = await sb
+    .from("payment_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("package_id", packageId);
+  if ((payCount ?? 0) > 0) {
+    throw new Error("ไม่สามารถลบได้: มีบันทึกการชำระเงินที่เชื่อมกับแพ็กเกจนี้");
+  }
+
+  // Block if any transactions reference this package
+  const { count: txCount } = await sb
+    .from("transactions")
+    .select("id", { count: "exact", head: true })
+    .eq("related_package_id", packageId);
+  if ((txCount ?? 0) > 0) {
+    throw new Error("ไม่สามารถลบได้: มีประวัติธุรกรรมที่เชื่อมกับแพ็กเกจนี้");
+  }
+
+  const { error } = await sb
+    .from("user_packages")
+    .delete()
+    .eq("id", packageId);
+  if (error) throw new Error(error.message);
+
+  await writeAdminLog({
+    userId,
+    childId: childId ?? null,
+    targetType: "user_package",
+    targetId: packageId,
+    action: "delete_package",
+    note: "ลบแพ็กเกจ",
+  });
+}
+
 // ── Internal: write admin log ─────────────────────────────
 async function writeAdminLog(opts: {
   userId: string;
+  childId?: string | null;
   targetType: string;
   targetId: string;
   action: string;
@@ -706,6 +843,7 @@ async function writeAdminLog(opts: {
     .from("admin_logs")
     .insert({
       user_id:        opts.userId,
+      child_id:       opts.childId ?? null,
       target_type:    opts.targetType,
       target_id:      opts.targetId,
       action:         opts.action,
