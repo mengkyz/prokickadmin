@@ -762,6 +762,21 @@ export async function insertUserPackage(
   });
 }
 
+// Batch-check which packages are safe to delete (no payment/transaction refs)
+export async function checkPackagesDeletable(packageIds: string[]): Promise<Record<string, boolean>> {
+  if (packageIds.length === 0) return {};
+  const sb = getSupabaseClient();
+  const [{ data: payData }, { data: txData }] = await Promise.all([
+    sb.from("payment_logs").select("package_id").in("package_id", packageIds),
+    sb.from("transactions").select("related_package_id").in("related_package_id", packageIds),
+  ]);
+  const blockedByPay = new Set((payData ?? []).map((r: any) => r.package_id).filter(Boolean));
+  const blockedByTx  = new Set((txData  ?? []).map((r: any) => r.related_package_id).filter(Boolean));
+  const result: Record<string, boolean> = {};
+  for (const id of packageIds) result[id] = !blockedByPay.has(id) && !blockedByTx.has(id);
+  return result;
+}
+
 export async function deleteUserPackage(packageId: string, userId: string): Promise<void> {
   const sb = getSupabaseClient();
 
