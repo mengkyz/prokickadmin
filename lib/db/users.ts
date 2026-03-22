@@ -444,9 +444,12 @@ export async function fetchAdminLogs(userId: string): Promise<AdminLog[]> {
       const d = log.delta_sessions ?? 0;
       dotColor = d >= 0 ? "var(--green)" : "var(--red)";
       actionLabel = d >= 0 ? `เพิ่ม Sessions +${d}` : `หัก Sessions ${d}`;
-    } else if (log.action === "pause") {
+    } else if (log.action === "activate_package") {
+      dotColor = "var(--green)";
+      actionLabel = "เปิดใช้แพ็กเกจ";
+    } else if (log.action === "deactivate_package") {
       dotColor = "var(--orange)";
-      actionLabel = "Pause แพ็กเกจ";
+      actionLabel = "ปิดใช้แพ็กเกจ";
     } else if (log.action === "extend") {
       dotColor = "var(--green)";
       actionLabel = "ต่ออายุแพ็กเกจ";
@@ -575,24 +578,24 @@ export async function adjustPackageSessions(
   });
 }
 
-export async function pausePackage(
+export async function togglePackageStatus(
   packageId: string,
   userId: string,
-  pausedFrom: string,
-  pausedUntil: string
+  newStatus: "active" | "inactive"
 ): Promise<void> {
   const { error } = await getSupabaseClient()
     .from("user_packages")
-    .update({ paused_from: pausedFrom, paused_until: pausedUntil })
+    .update({ status: newStatus })
     .eq("id", packageId);
   if (error) throw new Error(error.message);
 
+  const action = newStatus === "active" ? "activate_package" : "deactivate_package";
   await writeAdminLog({
     userId,
     targetType: "user_package",
     targetId: packageId,
-    action: "pause",
-    note: `${pausedFrom} → ${pausedUntil}`,
+    action,
+    note: newStatus === "active" ? "เปิดใช้งานแพ็กเกจ" : "ปิดใช้งานแพ็กเกจ",
   });
 }
 
@@ -602,9 +605,32 @@ export async function extendPackage(
   newExpiryDate: string,
   note?: string
 ): Promise<void> {
+  // Fetch current package to determine status update
+  const { data: current, error: fe } = await getSupabaseClient()
+    .from("user_packages")
+    .select("expiry_date, status")
+    .eq("id", packageId)
+    .single();
+  if (fe) throw new Error(fe.message);
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const newDate = new Date(newExpiryDate);
+  const currentStatus = (current as { status: string }).status;
+
+  let newStatus: string = currentStatus;
+  if (newDate < today) {
+    newStatus = "expired";
+  } else if (currentStatus === "expired" && newDate >= today) {
+    newStatus = "active";
+  }
+  // else keep current status unchanged
+
+  const updatePayload: { expiry_date: string; status?: string } = { expiry_date: newExpiryDate };
+  if (newStatus !== currentStatus) updatePayload.status = newStatus;
+
   const { error } = await getSupabaseClient()
     .from("user_packages")
-    .update({ expiry_date: newExpiryDate })
+    .update(updatePayload)
     .eq("id", packageId);
   if (error) throw new Error(error.message);
 
