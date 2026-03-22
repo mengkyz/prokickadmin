@@ -56,6 +56,11 @@ function SlipDetailModal({ payment, onClose }: { payment: AdminPayment | null; o
               รหัสข้อผิดพลาด: {payment.errorCode} — {payment.errorMessage ?? ""}
             </div>
           )}
+          {!payment.slipokSuccess && payment.failureReason && (
+            <div style={{ fontSize: 10, color: "var(--red)", marginTop: 1 }}>
+              สาเหตุ: {payment.failureReason}
+            </div>
+          )}
         </div>
       </div>
 
