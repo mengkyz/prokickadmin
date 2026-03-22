@@ -505,6 +505,12 @@ export async function fetchAdminLogs(userId: string): Promise<AdminLog[]> {
     } else if (log.action === "profile_update") {
       dotColor = "var(--blue)";
       actionLabel = "แก้ไขข้อมูลผู้ใช้";
+    } else if (log.action === "insert_package") {
+      dotColor = "var(--green)";
+      actionLabel = "เพิ่มแพ็กเกจ";
+    } else if (log.action === "delete_package") {
+      dotColor = "var(--red)";
+      actionLabel = "ลบแพ็กเกจ";
     }
 
     result.push({
@@ -689,6 +695,106 @@ export async function extendPackage(
     targetId: packageId,
     action: "extend",
     note: note || `Extended to ${newExpiryDate}`,
+  });
+}
+
+// ── Package templates (for admin "add package" form) ─────
+export interface PackageTemplateOption {
+  id: number;
+  name: string;
+  type: "adult" | "junior";
+  sessionCount: number;
+  daysValid: number;
+  price: number;
+}
+
+export async function fetchPackageTemplatesForAssign(): Promise<PackageTemplateOption[]> {
+  const { data, error } = await getSupabaseClient()
+    .from("package_templates")
+    .select("id, name, type, session_count, days_valid, price")
+    .order("type")
+    .order("price");
+  if (error) throw new Error(error.message);
+  return (data as any[]).map((r) => ({
+    id: r.id,
+    name: r.name,
+    type: r.type as "adult" | "junior",
+    sessionCount: r.session_count,
+    daysValid: r.days_valid,
+    price: r.price,
+  }));
+}
+
+export interface InsertPackageInput {
+  templateId: number;
+  startDate: string;
+  expiryDate: string;
+  notes?: string;
+}
+
+export async function insertUserPackage(
+  userId: string,
+  childId: string | null,
+  input: InsertPackageInput,
+  sessionCount: number
+): Promise<void> {
+  const { error } = await getSupabaseClient()
+    .from("user_packages")
+    .insert({
+      user_id: userId,
+      child_id: childId ?? null,
+      template_id: input.templateId,
+      remaining_sessions: sessionCount,
+      extra_sessions_purchased: 0,
+      start_date: input.startDate,
+      expiry_date: input.expiryDate,
+      status: "active",
+      notes: input.notes ?? null,
+    });
+  if (error) throw new Error(error.message);
+
+  await writeAdminLog({
+    userId,
+    targetType: "user_package",
+    targetId: userId,
+    action: "insert_package",
+    note: `เพิ่มแพ็กเกจ template #${input.templateId}${input.notes ? " · " + input.notes : ""}`,
+  });
+}
+
+export async function deleteUserPackage(packageId: string, userId: string): Promise<void> {
+  const sb = getSupabaseClient();
+
+  // Block if any payment_logs reference this package
+  const { count: payCount } = await sb
+    .from("payment_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("package_id", packageId);
+  if ((payCount ?? 0) > 0) {
+    throw new Error("ไม่สามารถลบได้: มีบันทึกการชำระเงินที่เชื่อมกับแพ็กเกจนี้");
+  }
+
+  // Block if any transactions reference this package
+  const { count: txCount } = await sb
+    .from("transactions")
+    .select("id", { count: "exact", head: true })
+    .eq("related_package_id", packageId);
+  if ((txCount ?? 0) > 0) {
+    throw new Error("ไม่สามารถลบได้: มีประวัติธุรกรรมที่เชื่อมกับแพ็กเกจนี้");
+  }
+
+  const { error } = await sb
+    .from("user_packages")
+    .delete()
+    .eq("id", packageId);
+  if (error) throw new Error(error.message);
+
+  await writeAdminLog({
+    userId,
+    targetType: "user_package",
+    targetId: packageId,
+    action: "delete_package",
+    note: "ลบแพ็กเกจ",
   });
 }
 
