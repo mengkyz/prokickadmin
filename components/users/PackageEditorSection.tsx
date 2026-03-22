@@ -12,6 +12,7 @@ import {
   fetchPackageTemplatesForAssign,
   insertUserPackage,
   deleteUserPackage,
+  checkPackagesDeletable,
 } from "@/lib/db/users";
 import type { AdminPackage, PackageTemplateOption } from "@/lib/db/users";
 
@@ -69,9 +70,10 @@ export function PackageEditorSection({ packages, userId, childId, onRefresh }: P
   const [savingAdd,        setSavingAdd]        = useState(false);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
 
-  // ── Delete confirm state ───────────────────────────────
+  // ── Delete confirm + deletability state ──────────────
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting,        setDeleting]        = useState(false);
+  const [deletableMap,    setDeletableMap]    = useState<Record<string, boolean>>({});
 
   // Load templates once on mount
   useEffect(() => {
@@ -114,6 +116,14 @@ export function PackageEditorSection({ packages, userId, childId, onRefresh }: P
       setAdjExtra(pkg.extraSessionsPurchased);
     }
   }, [pkg?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pre-check which packages are deletable (no payment/transaction refs)
+  useEffect(() => {
+    if (packages.length === 0) { setDeletableMap({}); return; }
+    checkPackagesDeletable(packages.map((p) => p.id))
+      .then(setDeletableMap)
+      .catch(() => {}); // non-critical — button stays enabled on failure
+  }, [packages]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Handlers ──────────────────────────────────────────
   async function handleToggle() {
@@ -349,9 +359,21 @@ export function PackageEditorSection({ packages, userId, childId, onRefresh }: P
                 <Button
                   variant="ghost"
                   size="sm"
-                  style={{ fontSize: 10, padding: "3px 8px", border: "1.5px solid var(--red)", color: "var(--red)" }}
-                  onClick={() => setConfirmDeleteId(pkg.id)}
-                  title="ลบแพ็กเกจ (เฉพาะที่ยังไม่มีการใช้งาน)"
+                  style={{
+                    fontSize: 10, padding: "3px 8px",
+                    border: deletableMap[pkg.id] === false
+                      ? "1.5px solid var(--bd2)"
+                      : "1.5px solid var(--red)",
+                    color: deletableMap[pkg.id] === false ? "var(--tm)" : "var(--red)",
+                    cursor: deletableMap[pkg.id] === false ? "not-allowed" : "pointer",
+                    opacity: deletableMap[pkg.id] === false ? 0.45 : 1,
+                  }}
+                  onClick={() => { if (deletableMap[pkg.id] !== false) setConfirmDeleteId(pkg.id); }}
+                  title={
+                    deletableMap[pkg.id] === false
+                      ? "ไม่สามารถลบได้: มีการชำระเงินหรือธุรกรรมที่เชื่อมกับแพ็กเกจนี้"
+                      : "ลบแพ็กเกจ"
+                  }
                 >
                   🗑️
                 </Button>
