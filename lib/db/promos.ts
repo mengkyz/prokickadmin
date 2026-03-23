@@ -15,9 +15,8 @@ interface PromoCodeRow {
 }
 
 function computeStatus(row: PromoCodeRow): PromoStatus {
+  if (new Date(row.expires_at).getTime() < Date.now()) return "Expired";
   if (!row.is_active) return "Inactive";
-  const daysLeft = (new Date(row.expires_at).getTime() - Date.now()) / 86_400_000;
-  if (daysLeft <= 7) return "Expiring";
   return "Active";
 }
 

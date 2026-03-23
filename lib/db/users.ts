@@ -113,7 +113,7 @@ export interface AdminPackage {
   notes: string;
 }
 
-export type UserStatus = "Active" | "Low" | "Expired" | "No Package";
+export type UserStatus = "Active" | "Low" | "Expired" | "Inactive" | "No Package";
 
 export interface AdminChild {
   id: string;
@@ -238,19 +238,21 @@ function rowToAdminUser(
   // Status is derived from the most recent ACTIVE package only
   const activePkgRow = ownPkgRows.find((p) => p.status === "active") ?? null;
   const activePkgForStatus = activePkgRow ? rowToPackage(activePkgRow) : null;
-  // "Expired" if user has packages but none are active; "No Package" if never bought
+  // Active → Active/Low; inactive only → Inactive; expired only → Expired; nothing → No Package
   const status: UserStatus = activePkgForStatus
     ? deriveStatus(activePkgForStatus)
-    : ownPkgRows.some((p) => p.status === "expired")
-      ? "Expired"
-      : ownPkgRows.some((p) => p.status === "inactive")
-        ? "No Package"
+    : ownPkgRows.some((p) => p.status === "inactive")
+      ? "Inactive"
+      : ownPkgRows.some((p) => p.status === "expired")
+        ? "Expired"
         : "No Package";
 
-  // Display package: most recent active → inactive → null (excludes expired from switcher)
+  // Display package: most recent active → inactive → expired → null
   const displayPkg = pickDisplayPkg(ownPkgRows);
+  // Switcher only cycles within same DB-status group as the default display package
   const ownPackages = ownPkgRows
-    .filter((p) => p.status === "active" || p.status === "inactive")
+    .filter((p) => p.status === (displayPkg?.status ?? "__none__"))
+    .sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime())
     .map(rowToPackage);
 
   // Derive types
@@ -305,17 +307,21 @@ function rowToAdminChild(
     .filter((p) => p.child_id === row.id)
     .sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
   const displayPkg = pickDisplayPkg(childPkgRows);
+  // Switcher only cycles within same DB-status group as the default display package
   const ownPackages = childPkgRows
-    .filter((p) => p.status === "active" || p.status === "inactive")
+    .filter((p) => p.status === (displayPkg?.status ?? "__none__"))
+    .sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime())
     .map(rowToPackage);
-  // Status from most recent active only; expired packages → "Expired" not "No Package"
+  // Active → Active/Low; inactive only → Inactive; expired only → Expired; nothing → No Package
   const activePkgRow = childPkgRows.find((p) => p.status === "active") ?? null;
   const activePkgForStatus = activePkgRow ? rowToPackage(activePkgRow) : null;
   const childStatus: UserStatus = activePkgForStatus
     ? deriveStatus(activePkgForStatus)
-    : childPkgRows.some((p) => p.status === "expired")
-      ? "Expired"
-      : "No Package";
+    : childPkgRows.some((p) => p.status === "inactive")
+      ? "Inactive"
+      : childPkgRows.some((p) => p.status === "expired")
+        ? "Expired"
+        : "No Package";
   return {
     id: row.id,
     parentId: row.parent_id,
