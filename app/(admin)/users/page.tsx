@@ -17,6 +17,7 @@ const statusVariant: Record<string, BadgeVariant> = {
   Active: "green",
   Expired: "red",
   Low: "orange",
+  Inactive: "gray",
   "No Package": "gray",
 };
 
@@ -66,10 +67,10 @@ export default function UsersPage() {
     return fallback;
   }
 
-  function cyclePkg(e: React.MouseEvent, id: string, packages: import("@/lib/db/users").AdminPackage[], dir: 1 | -1) {
+  function cyclePkg(e: React.MouseEvent, id: string, packages: import("@/lib/db/users").AdminPackage[], dir: 1 | -1, currentPkg: import("@/lib/db/users").AdminPackage | null) {
     e.stopPropagation();
-    const sel = displayPkgMap[id];
-    const idx = sel ? packages.findIndex((p) => p.id === sel) : 0;
+    const currentId = displayPkgMap[id] ?? currentPkg?.id;
+    const idx = currentId ? packages.findIndex((p) => p.id === currentId) : 0;
     const next = (idx + dir + packages.length) % packages.length;
     setDisplayPkgMap((prev) => ({ ...prev, [id]: packages[next].id }));
   }
@@ -152,6 +153,7 @@ export default function UsersPage() {
             <option value="all">ทุกสถานะ</option>
             <option value="active">Active</option>
             <option value="low">Low</option>
+            <option value="inactive">Inactive</option>
             <option value="expired">Expired</option>
             <option value="no package">No Package</option>
           </select>
@@ -255,9 +257,9 @@ export default function UsersPage() {
                           <div style={{ fontSize: 10, color: "var(--tm)" }}>{dispPkg.startDate} – {dispPkg.expiryDate}</div>
                           {user.ownPackages.length > 1 && (
                             <div style={{ display: "flex", alignItems: "center", gap: 3, marginTop: 2 }} onClick={(e) => e.stopPropagation()}>
-                              <button onClick={(e) => cyclePkg(e, user.id, user.ownPackages, -1)} style={{ fontSize: 9, cursor: "pointer", background: "none", border: "none", color: "var(--tm)", padding: "0 2px" }}>◀</button>
+                              <button onClick={(e) => cyclePkg(e, user.id, user.ownPackages, -1, dispPkg)} style={{ fontSize: 9, cursor: "pointer", background: "none", border: "none", color: "var(--tm)", padding: "0 2px" }}>◀</button>
                               <span style={{ fontSize: 9, color: "var(--tm)", fontFamily: "'JetBrains Mono',monospace" }}>{uPkgIdx + 1}/{user.ownPackages.length}</span>
-                              <button onClick={(e) => cyclePkg(e, user.id, user.ownPackages, 1)} style={{ fontSize: 9, cursor: "pointer", background: "none", border: "none", color: "var(--tm)", padding: "0 2px" }}>▶</button>
+                              <button onClick={(e) => cyclePkg(e, user.id, user.ownPackages, 1, dispPkg)} style={{ fontSize: 9, cursor: "pointer", background: "none", border: "none", color: "var(--tm)", padding: "0 2px" }}>▶</button>
                             </div>
                           )}
                         </>
@@ -277,6 +279,7 @@ export default function UsersPage() {
                         {user.status === "Active" ? "● Active"
                           : user.status === "Low" ? "⚠ Low"
                           : user.status === "Expired" ? "● Expired"
+                          : user.status === "Inactive" ? "Inactive"
                           : user.status}
                       </Badge>
                     </td>
@@ -318,9 +321,9 @@ export default function UsersPage() {
                             <div style={{ fontSize: 10, color: "var(--tm)" }}>{cDispPkg.startDate} – {cDispPkg.expiryDate}</div>
                             {child.ownPackages.length > 1 && (
                               <div style={{ display: "flex", alignItems: "center", gap: 3, marginTop: 2 }} onClick={(e) => e.stopPropagation()}>
-                                <button onClick={(e) => cyclePkg(e, child.id, child.ownPackages, -1)} style={{ fontSize: 9, cursor: "pointer", background: "none", border: "none", color: "var(--tm)", padding: "0 2px" }}>◀</button>
+                                <button onClick={(e) => cyclePkg(e, child.id, child.ownPackages, -1, cDispPkg)} style={{ fontSize: 9, cursor: "pointer", background: "none", border: "none", color: "var(--tm)", padding: "0 2px" }}>◀</button>
                                 <span style={{ fontSize: 9, color: "var(--tm)", fontFamily: "'JetBrains Mono',monospace" }}>{cPkgIdx + 1}/{child.ownPackages.length}</span>
-                                <button onClick={(e) => cyclePkg(e, child.id, child.ownPackages, 1)} style={{ fontSize: 9, cursor: "pointer", background: "none", border: "none", color: "var(--tm)", padding: "0 2px" }}>▶</button>
+                                <button onClick={(e) => cyclePkg(e, child.id, child.ownPackages, 1, cDispPkg)} style={{ fontSize: 9, cursor: "pointer", background: "none", border: "none", color: "var(--tm)", padding: "0 2px" }}>▶</button>
                               </div>
                             )}
                           </>
@@ -340,6 +343,7 @@ export default function UsersPage() {
                           {child.status === "Active" ? "● Active"
                             : child.status === "Low" ? "⚠ Low"
                             : child.status === "Expired" ? "● Expired"
+                            : child.status === "Inactive" ? "Inactive"
                             : child.status}
                         </Badge>
                       </td>
