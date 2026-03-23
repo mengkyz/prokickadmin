@@ -5,7 +5,8 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge, BadgeVariant } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { PromoModal } from "@/components/promo/PromoModal";
-import { fetchPromos, togglePromoActive } from "@/lib/db/promos";
+import { Modal } from "@/components/ui/Modal";
+import { fetchPromos, togglePromoActive, checkPromosDeletable, deletePromo } from "@/lib/db/promos";
 import { useToast } from "@/lib/context/ToastContext";
 import type { PromoCode } from "@/lib/types";
 
@@ -15,12 +16,16 @@ export default function PromoPage() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<"none" | "create" | "edit">("none");
   const [editTarget, setEditTarget] = useState<PromoCode | undefined>();
+  const [deletableMap, setDeletableMap] = useState<Record<string, boolean>>({});
+  const [deleteTarget, setDeleteTarget] = useState<PromoCode | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const data = await fetchPromos();
       setPromos(data);
+      checkPromosDeletable(data.map((p) => p.id)).then(setDeletableMap);
     } catch (err) {
       showToast(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ");
     } finally {
@@ -38,6 +43,21 @@ export default function PromoPage() {
   function openCreate() {
     setEditTarget(undefined);
     setModal("create");
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deletePromo(deleteTarget.id);
+      showToast("ลบโค้ดแล้ว");
+      setDeleteTarget(null);
+      load();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   async function handleToggle(promo: PromoCode) {
@@ -120,7 +140,7 @@ export default function PromoPage() {
                       </Badge>
                     </td>
                     <td>
-                      <div style={{ display: "flex", gap: 5 }}>
+                      <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
                         <Button variant="ghost" size="sm" onClick={() => openEdit(promo)}>แก้ไข</Button>
                         <Button
                           variant="danger"
@@ -129,6 +149,18 @@ export default function PromoPage() {
                         >
                           {promo.status === "Inactive" ? "เปิด" : "ปิด"}
                         </Button>
+                        <Button
+                          size="sm"
+                          style={{
+                            border: deletableMap[promo.id] === false ? "1.5px solid var(--bd2)" : "1.5px solid var(--red)",
+                            color: deletableMap[promo.id] === false ? "var(--tm)" : "var(--red)",
+                            cursor: deletableMap[promo.id] === false ? "not-allowed" : "pointer",
+                            opacity: deletableMap[promo.id] === false ? 0.45 : 1,
+                            background: "transparent",
+                          }}
+                          onClick={() => { if (deletableMap[promo.id] !== false) setDeleteTarget(promo); }}
+                          title={deletableMap[promo.id] === false ? "ไม่สามารถลบได้: โค้ดนี้ถูกใช้งานแล้ว" : "ลบโค้ด"}
+                        >🗑️</Button>
                       </div>
                     </td>
                   </tr>
@@ -153,6 +185,35 @@ export default function PromoPage() {
         initial={editTarget}
         onSuccess={load}
       />
+
+      {/* Delete confirm modal */}
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="🗑️ ยืนยันการลบโค้ด"
+        width={400}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setDeleteTarget(null)} disabled={deleting}>ยกเลิก</Button>
+            <Button
+              size="sm"
+              style={{ background: "var(--red)", color: "#fff", border: "none", padding: "6px 16px", fontSize: 13 }}
+              onClick={handleDelete}
+              disabled={deleting}
+            >{deleting ? "กำลังลบ..." : "ลบโค้ด"}</Button>
+          </>
+        }
+      >
+        <div style={{ fontSize: 14, color: "var(--t2)", lineHeight: 1.6 }}>
+          <p>คุณต้องการลบโปรโมชั่นโค้ด</p>
+          <p style={{ margin: "8px 0" }}>
+            <span style={{ background: "var(--purple-l)", border: "1px solid #DDD6FE", borderRadius: 5, padding: "3px 10px", fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--purple)" }}>
+              {deleteTarget?.code}
+            </span>
+          </p>
+          <p>การดำเนินการนี้ไม่สามารถย้อนกลับได้</p>
+        </div>
+      </Modal>
     </>
   );
 }

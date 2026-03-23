@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { Modal, FormGrid, FormItem, FormSection, DefaultFooter } from "@/components/ui/Modal";
 import { useToast } from "@/lib/context/ToastContext";
-import { createPromo, updatePromo, deletePromo } from "@/lib/db/promos";
+import { createPromo, updatePromo } from "@/lib/db/promos";
 import type { PromoCode, DiscountType } from "@/lib/types";
 
 interface PromoModalProps {
@@ -60,21 +60,6 @@ export function PromoModal({ open, onClose, mode, initial, onSuccess }: PromoMod
     }
   }
 
-  async function handleDelete() {
-    if (!initial) return;
-    setLoading(true);
-    try {
-      await deletePromo(initial.id);
-      showToast("ลบโค้ดแล้ว");
-      onSuccess?.();
-      onClose();
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   const title = mode === "create"
     ? "🏷️ สร้างโปรโมชั่นโค้ด"
     : `✏️ แก้ไขโค้ด — ${initial?.code ?? ""}`;
@@ -90,18 +75,6 @@ export function PromoModal({ open, onClose, mode, initial, onSuccess }: PromoMod
           onCancel={onClose}
           onConfirm={handleConfirm}
           confirmLabel={loading ? "กำลังบันทึก..." : mode === "create" ? "สร้าง" : "บันทึก"}
-          extra={
-            mode === "edit" && initial ? (
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={loading}
-                style={{ background: "var(--red, #ef4444)", color: "#fff", border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 13, marginRight: "auto" }}
-              >
-                ลบ
-              </button>
-            ) : undefined
-          }
         />
       }
     >
