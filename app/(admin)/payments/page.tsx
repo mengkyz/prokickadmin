@@ -31,6 +31,14 @@ function packageTypeLabel(type: string | null): string {
   return type ?? "";
 }
 
+function promoDiscountLabel(payment: AdminPayment): string {
+  if (!payment.promoCode) return "";
+  const disc = payment.promoDiscount;
+  const type = payment.promoDiscountType;
+  if (disc == null) return payment.promoCode;
+  return type === "percent" ? `${payment.promoCode} (−${disc}%)` : `${payment.promoCode} (−${disc} ฿)`;
+}
+
 // ── Slip detail modal ─────────────────────────────────────────────────────────
 function SlipDetailModal({ payment, onClose }: { payment: AdminPayment | null; onClose: () => void }) {
   if (!payment) return null;
@@ -87,21 +95,37 @@ function SlipDetailModal({ payment, onClose }: { payment: AdminPayment | null; o
 
       {/* ── Amount ── */}
       <div style={{
-        display: "flex", alignItems: "center", justifyContent: "center", gap: 16,
+        display: "flex", flexDirection: "column", alignItems: "center",
         padding: "12px 0 14px", borderBottom: "1px solid var(--bd)", marginBottom: 14,
       }}>
+        {/* Promo: show original struck-through above */}
+        {payment.promoCode && payment.originalAmount != null && payment.originalAmount !== payment.amount && (
+          <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--tm)", textDecoration: "line-through", marginBottom: 2 }}>
+            {payment.originalAmount.toLocaleString()} ฿
+          </div>
+        )}
         <div style={{ textAlign: "center" }}>
           <div style={{ fontSize: 10, color: "var(--tm)", marginBottom: 3 }}>ยอดชำระ</div>
           <div style={{ fontSize: 30, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: ok ? "var(--green)" : "var(--red)", lineHeight: 1 }}>
             {payment.amount != null ? `${payment.amount.toLocaleString()} ฿` : "— ฿"}
           </div>
         </div>
-        {payment.expectedAmount != null && payment.expectedAmount !== payment.amount && (
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 10, color: "var(--tm)", marginBottom: 3 }}>ยอดที่คาดหวัง</div>
-            <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--tm)" }}>
-              {payment.expectedAmount.toLocaleString()} ฿
-            </div>
+        {/* Promo badge */}
+        {payment.promoCode && (
+          <div style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 5, background: "var(--purple-l)", border: "1px solid #DDD6FE", borderRadius: 6, padding: "3px 9px" }}>
+            <span style={{ fontSize: 10, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--purple)" }}>{payment.promoCode}</span>
+            {payment.discountAmount != null && (
+              <span style={{ fontSize: 10, color: "var(--purple)", fontWeight: 600 }}>
+                ลด {payment.discountAmount.toLocaleString()} ฿
+                {payment.promoDiscountType === "percent" && payment.promoDiscount != null ? ` (${payment.promoDiscount}%)` : ""}
+              </span>
+            )}
+          </div>
+        )}
+        {/* Mismatch warning (no promo but amounts differ) */}
+        {!payment.promoCode && payment.expectedAmount != null && payment.expectedAmount !== payment.amount && (
+          <div style={{ marginTop: 6, fontSize: 10, color: "var(--tm)" }}>
+            ยอดที่คาดหวัง: {payment.expectedAmount.toLocaleString()} ฿
           </div>
         )}
       </div>
@@ -114,43 +138,45 @@ function SlipDetailModal({ payment, onClose }: { payment: AdminPayment | null; o
           background: "var(--bg)", border: "1.5px solid var(--bd)",
           display: "flex", flexDirection: "column", gap: 7,
         }}>
-          {/* Type + package name */}
+          {/* Type + product name */}
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 18 }}>{ptLabel.icon}</span>
             <div>
               <div style={{ fontSize: 12, fontWeight: 700 }}>
-                {payment.packageName
-                  ? `${payment.packageName}${payment.packageType ? ` (${packageTypeLabel(payment.packageType)})` : ""}`
-                  : ptLabel.label}
+                {payment.paymentType === "extra_session"
+                  ? "ซื้อคลาสเพิ่มเติม"
+                  : payment.packageName
+                    ? `${payment.packageName}${payment.packageType ? ` (${packageTypeLabel(payment.packageType)})` : ""}`
+                    : ptLabel.label}
               </div>
-              {payment.packageSessions && (
+              {/* For extra_session: show which package it belongs to */}
+              {payment.paymentType === "extra_session" && payment.packageName && (
+                <div style={{ fontSize: 10, color: "var(--purple)", fontWeight: 600, marginTop: 1 }}>
+                  แพ็กเกจ: {payment.packageName}{payment.packageType ? ` (${packageTypeLabel(payment.packageType)})` : ""}
+                </div>
+              )}
+              {payment.packageSessions != null && payment.paymentType !== "extra_session" && (
                 <div style={{ fontSize: 10, color: "var(--tm)" }}>
                   {payment.packageSessions} ครั้ง
                   {payment.remainingSessions != null ? ` · คงเหลือ ${payment.remainingSessions} ครั้ง` : ""}
                 </div>
               )}
-              {!payment.packageName && payment.paymentType === "package" && (
-                <div style={{ fontSize: 10, color: "var(--tm)" }}>{ptLabel.label}</div>
-              )}
             </div>
           </div>
 
-          {/* Child info */}
-          {payment.childName && (
+          {/* Package owner — who this package / extra session is for */}
+          {payment.childName ? (
             <div style={{
               display: "flex", alignItems: "center", gap: 8,
               paddingTop: 7, borderTop: "1px dashed var(--bd)",
             }}>
               <span style={{ fontSize: 15 }}>👶</span>
               <div>
-                <div style={{ fontSize: 10, color: "var(--tm)" }}>ซื้อให้</div>
+                <div style={{ fontSize: 10, color: "var(--tm)" }}>เจ้าของแพ็กเกจ</div>
                 <div style={{ fontSize: 12, fontWeight: 700 }}>{payment.childName}</div>
               </div>
             </div>
-          )}
-
-          {/* Buyer */}
-          {payment.userName && (
+          ) : payment.userName ? (
             <div style={{
               display: "flex", alignItems: "center", gap: 8,
               paddingTop: 7, borderTop: "1px dashed var(--bd)",
@@ -164,7 +190,28 @@ function SlipDetailModal({ payment, onClose }: { payment: AdminPayment | null; o
                 {payment.avatarInitial}
               </div>
               <div>
-                <div style={{ fontSize: 10, color: "var(--tm)" }}>{payment.childName ? "ผู้ปกครอง" : "ผู้ซื้อ"}</div>
+                <div style={{ fontSize: 10, color: "var(--tm)" }}>เจ้าของแพ็กเกจ</div>
+                <div style={{ fontSize: 12, fontWeight: 600 }}>{payment.userName}</div>
+              </div>
+            </div>
+          ) : null}
+
+          {/* Buyer (only shown separately when buying for a child) */}
+          {payment.childName && payment.userName && (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 8,
+              paddingTop: 7, borderTop: "1px dashed var(--bd)",
+            }}>
+              <div style={{
+                width: 26, height: 26, borderRadius: "50%",
+                background: payment.avatarColor, flexShrink: 0,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 9, fontWeight: 700, color: "#fff",
+              }}>
+                {payment.avatarInitial}
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: "var(--tm)" }}>ผู้ชำระเงิน</div>
                 <div style={{ fontSize: 12, fontWeight: 600 }}>{payment.userName}</div>
                 {payment.userPhone && <div style={{ fontSize: 10, color: "var(--tm)" }}>{payment.userPhone}</div>}
               </div>
@@ -424,8 +471,8 @@ export default function PaymentsPage() {
                 <th>วัน/เวลา</th>
                 <th>ผู้โอน</th>
                 <th>ธนาคาร</th>
+                <th>สินค้า</th>
                 <th>ยอด</th>
-                <th>เลขอ้างอิง</th>
                 <th>สถานะ</th>
                 <th>รายละเอียด</th>
               </tr>
@@ -467,14 +514,55 @@ export default function PaymentsPage() {
                       </div>
                     </td>
 
-                    {/* Amount */}
-                    <td className="pk-mono" style={{ color: pay.slipokSuccess ? "var(--green)" : "var(--red)", fontWeight: 700 }}>
-                      {pay.amount != null ? `${pay.amount.toLocaleString()} ฿` : "—"}
+                    {/* Product */}
+                    <td style={{ maxWidth: 150 }}>
+                      {pay.paymentType === "extra_session" ? (
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 600 }}>🎫 ซื้อคลาสเพิ่ม</div>
+                          {pay.packageName && (
+                            <div style={{ fontSize: 10, color: "var(--purple)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {pay.packageName}
+                            </div>
+                          )}
+                        </div>
+                      ) : pay.packageName ? (
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {pay.packageName}
+                          </div>
+                          {pay.packageType && (
+                            <div style={{ fontSize: 10, color: "var(--tm)" }}>{packageTypeLabel(pay.packageType)}</div>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: 11, color: "var(--tm)" }}>
+                          {paymentTypeLabel(pay.paymentType).icon} {paymentTypeLabel(pay.paymentType).label}
+                        </span>
+                      )}
+                      {pay.childName && (
+                        <div style={{ fontSize: 10, color: "var(--tm)", marginTop: 1 }}>👶 {pay.childName}</div>
+                      )}
                     </td>
 
-                    {/* Trans Ref */}
-                    <td className="pk-mono" style={{ fontSize: 10, color: "var(--tm)", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {pay.transRef ?? "—"}
+                    {/* Amount — with promo strikethrough tooltip */}
+                    <td className="pk-mono">
+                      {pay.promoCode && pay.originalAmount != null && pay.originalAmount !== pay.amount ? (
+                        <div title={promoDiscountLabel(pay)}>
+                          <div style={{ fontSize: 10, color: "var(--tm)", textDecoration: "line-through", lineHeight: 1.2 }}>
+                            {pay.originalAmount.toLocaleString()} ฿
+                          </div>
+                          <div style={{ fontWeight: 700, color: pay.slipokSuccess ? "var(--green)" : "var(--red)" }}>
+                            {pay.amount != null ? `${pay.amount.toLocaleString()} ฿` : "—"}
+                          </div>
+                          <div style={{ fontSize: 9, color: "var(--purple)", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
+                            {pay.promoCode}
+                          </div>
+                        </div>
+                      ) : (
+                        <span style={{ fontWeight: 700, color: pay.slipokSuccess ? "var(--green)" : "var(--red)" }}>
+                          {pay.amount != null ? `${pay.amount.toLocaleString()} ฿` : "—"}
+                        </span>
+                      )}
                     </td>
 
                     {/* Status */}
