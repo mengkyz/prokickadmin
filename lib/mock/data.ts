@@ -180,7 +180,7 @@ export const INCOMING_DETAIL: Booking[] = [
 // ── Promo Codes ───────────────────────────────────────────
 export const PROMO_CODES: PromoCode[] = [
   { id: "promo-1", code: "PROKICK2024", discount: 10, discountType: "percent", usedCount: 47, usageLimit: 100, expiresAt: "31/03/69", status: "Active" },
-  { id: "promo-2", code: "FUNPACK50", discount: 50, discountType: "fixed", usedCount: 12, usageLimit: 50, expiresAt: "28/02/69", status: "Expiring" },
+  { id: "promo-2", code: "FUNPACK50", discount: 50, discountType: "fixed", usedCount: 12, usageLimit: 50, expiresAt: "28/02/69", status: "Inactive" },
 ];
 
 // ── Payments ──────────────────────────────────────────────

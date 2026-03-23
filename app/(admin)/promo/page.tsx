@@ -73,14 +73,14 @@ export default function PromoPage() {
 
   const statusVariant: Record<string, BadgeVariant> = {
     Active: "green",
-    Expiring: "orange",
     Inactive: "gray",
+    Expired: "red",
   };
 
   const statusLabel: Record<string, string> = {
     Active: "● Active",
-    Expiring: "⚠ Expiring",
     Inactive: "Inactive",
+    Expired: "Expired",
   };
 
   // Format ISO date (YYYY-MM-DD) to DD/MM/YY for display

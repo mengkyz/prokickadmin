@@ -95,7 +95,7 @@ export interface Booking {
 }
 
 // ── Promo ────────────────────────────────────────────────
-export type PromoStatus = "Active" | "Expiring" | "Inactive";
+export type PromoStatus = "Active" | "Inactive" | "Expired";
 export type DiscountType = "percent" | "fixed";
 
 export interface PromoCode {
