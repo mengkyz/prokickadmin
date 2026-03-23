@@ -96,8 +96,33 @@ export async function togglePromoActive(id: string, isActive: boolean): Promise<
   if (error) throw new Error(error.message);
 }
 
+// ── DELETABILITY CHECK ────────────────────────────────────
+/** Batch-check which promo codes have never been used (used_count = 0 → safe to delete) */
+export async function checkPromosDeletable(ids: string[]): Promise<Record<string, boolean>> {
+  if (ids.length === 0) return {};
+  const { data } = await getSupabaseClient()
+    .from("promo_codes")
+    .select("id, used_count")
+    .in("id", ids);
+  const result: Record<string, boolean> = {};
+  for (const row of (data ?? []) as { id: string; used_count: number }[]) {
+    result[row.id] = row.used_count === 0;
+  }
+  return result;
+}
+
 // ── DELETE ───────────────────────────────────────────────
+/** Hard-delete a promo code — only allowed if it has never been used */
 export async function deletePromo(id: string): Promise<void> {
+  const { data } = await getSupabaseClient()
+    .from("promo_codes")
+    .select("used_count")
+    .eq("id", id)
+    .single();
+  if ((data as { used_count: number } | null)?.used_count ?? 0 > 0) {
+    throw new Error("ไม่สามารถลบได้: โค้ดนี้ถูกใช้งานแล้ว");
+  }
+
   const { error } = await getSupabaseClient()
     .from("promo_codes")
     .delete()
