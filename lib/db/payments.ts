@@ -99,6 +99,7 @@ interface PaymentRow {
   // Legacy extra columns
   payment_type?: string | null;
   expected_amount?: number | null;
+  target_id?: string | null;
   // Promo code (column is promo_id in DB)
   promo_id?: string | null;
   // joined
@@ -108,6 +109,8 @@ interface PaymentRow {
     remaining_sessions: number;
     package_templates: { name: string; type: string; session_count: number; extra_session_price: number } | null;
   } | null;
+  // direct join via target_id → package_templates.id
+  package_templates?: { name: string; type: string; session_count: number } | null;
   promo_codes?: { code: string; discount: number; discount_type: string } | null;
 }
 
@@ -236,9 +239,9 @@ function rowToAdminPayment(row: PaymentRow): AdminPayment {
     rawResponse: row.raw_response,
     paymentType: row.payment_type ?? null,
     expectedAmount: row.expected_amount ?? row.actual_amount ?? null,
-    packageName: row.user_packages?.package_templates?.name ?? null,
-    packageType: row.user_packages?.package_templates?.type ?? null,
-    packageSessions: row.user_packages?.package_templates?.session_count ?? null,
+    packageName: row.user_packages?.package_templates?.name ?? row.package_templates?.name ?? null,
+    packageType: row.user_packages?.package_templates?.type ?? row.package_templates?.type ?? null,
+    packageSessions: row.user_packages?.package_templates?.session_count ?? row.package_templates?.session_count ?? null,
     remainingSessions: row.user_packages?.remaining_sessions ?? null,
     childName: row.child_profiles?.nickname ?? null,
     userName: row.profiles?.full_name ?? null,
@@ -275,17 +278,68 @@ export async function fetchPayments(opts?: {
 }): Promise<AdminPayment[]> {
   let query = getSupabaseClient()
     .from("payment_logs")
-    .select(`*, profiles(full_name, phone_number), child_profiles(nickname), user_packages(remaining_sessions, package_templates(name, type, session_count, extra_session_price)), promo_codes(code, discount, discount_type)`)
+    .select(`*, profiles(full_name, phone_number), child_profiles(nickname), promo_codes(code, discount, discount_type)`)
     .order("created_at", { ascending: false })
     .limit(opts?.limit ?? 200);
 
   if (opts?.from) query = query.gte("created_at", opts.from);
   if (opts?.to)   query = query.lte("created_at", opts.to);
-  // Note: slipok_success filter applied client-side (column may not exist pre-migration)
 
   const { data, error } = await query;
   if (error) throw new Error(error.message);
-  let rows = (data as PaymentRow[]).map(rowToAdminPayment);
+
+  const rawRows = data as PaymentRow[];
+
+  // Collect target_ids by type:
+  // - new_package  → integer target_id → package_templates.id
+  // - extra_session → UUID target_id   → user_packages.id (which joins package_templates)
+  const newPkgIds = [...new Set(
+    rawRows.filter((r) => r.payment_type === "new_package" && r.target_id).map((r) => Number(r.target_id))
+  )].filter((n) => !isNaN(n));
+
+  const extraSessionIds = [...new Set(
+    rawRows.filter((r) => r.payment_type === "extra_session" && r.target_id).map((r) => r.target_id as string)
+  )];
+
+  // Batch-fetch in parallel
+  const templateById: Record<number, { name: string; type: string; session_count: number }> = {};
+  const userPkgById: Record<string, { remaining_sessions: number; package_templates: { name: string; type: string; session_count: number } | null }> = {};
+
+  await Promise.all([
+    newPkgIds.length > 0
+      ? getSupabaseClient().from("package_templates").select("id, name, type, session_count").in("id", newPkgIds)
+          .then(({ data: d }) => {
+            for (const t of (d ?? []) as { id: number; name: string; type: string; session_count: number }[]) {
+              templateById[t.id] = t;
+            }
+          })
+      : Promise.resolve(),
+    extraSessionIds.length > 0
+      ? getSupabaseClient().from("user_packages").select("id, remaining_sessions, package_templates(name, type, session_count)").in("id", extraSessionIds)
+          .then(({ data: d }) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            for (const up of (d ?? []) as any[]) {
+              userPkgById[up.id] = up;
+            }
+          })
+      : Promise.resolve(),
+  ]);
+
+  // Inject resolved data into each row before converting
+  for (const r of rawRows) {
+    if (r.payment_type === "new_package" && r.target_id) {
+      const tmpl = templateById[Number(r.target_id)];
+      if (tmpl) r.package_templates = tmpl;
+    } else if (r.payment_type === "extra_session" && r.target_id) {
+      const up = userPkgById[r.target_id];
+      if (up) {
+        r.user_packages = { remaining_sessions: up.remaining_sessions, package_templates: up.package_templates ?? null } as PaymentRow["user_packages"];
+        if (up.package_templates) r.package_templates = up.package_templates;
+      }
+    }
+  }
+
+  let rows = rawRows.map(rowToAdminPayment);
   if (opts?.successOnly) rows = rows.filter((r) => r.slipokSuccess);
   if (opts?.failedOnly)  rows = rows.filter((r) => !r.slipokSuccess);
   return rows;
