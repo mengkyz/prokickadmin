@@ -548,9 +548,11 @@ export default function PaymentsPage() {
                           {paymentTypeLabel(pay.paymentType).icon} {paymentTypeLabel(pay.paymentType).label}
                         </span>
                       )}
-                      {pay.childName && (
+                      {pay.childName ? (
                         <div style={{ fontSize: 10, color: "var(--tm)", marginTop: 1 }}>👶 {pay.childName}</div>
-                      )}
+                      ) : pay.userName ? (
+                        <div style={{ fontSize: 10, color: "var(--tm)", marginTop: 1 }}>👤 {pay.userName}</div>
+                      ) : null}
                     </td>
 
                     {/* Amount — with promo strikethrough tooltip */}
