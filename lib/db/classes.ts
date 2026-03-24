@@ -282,20 +282,52 @@ export async function updateClass(id: string, input: Partial<ClassInput>): Promi
   return rowToAdminClass(data as ClassRow);
 }
 
-export async function cancelClass(id: string): Promise<void> {
-  const { error } = await getSupabaseClient()
+export async function cancelClass(id: string): Promise<{ cancelledBookings: number }> {
+  const db = getSupabaseClient();
+
+  // 1. Fetch all active bookings (booked + standby), including user_id for RPC call
+  const { data: bookings, error: bErr } = await db
+    .from("bookings")
+    .select("id, user_id, status")
+    .eq("class_id", id)
+    .in("status", ["booked", "standby"]);
+
+  if (bErr) throw new Error(bErr.message);
+
+  const active = (bookings ?? []) as { id: string; user_id: string; status: string }[];
+  const standbyOnes = active.filter((b) => b.status === "standby");
+  const bookedOnes  = active.filter((b) => b.status === "booked");
+
+  // 2. Cancel standbys FIRST via RPC — so when booked users are cancelled,
+  //    no standby promotion occurs (queue is already empty)
+  for (const b of standbyOnes) {
+    await db.rpc("cancel_booking", { p_booking_id: b.id, p_user_id: b.user_id });
+  }
+
+  // 3. Cancel booked bookings via the same RPC used for manual cancellations.
+  //    The RPC runs as SECURITY DEFINER, atomically does:
+  //    remaining_sessions += 1  +  decrements current_bookings on the class
+  for (const b of bookedOnes) {
+    await db.rpc("cancel_booking", { p_booking_id: b.id, p_user_id: b.user_id });
+  }
+
+  // 4. Cancel the class itself
+  const { error } = await db
     .from("classes")
     .update({ status: "cancelled" })
     .eq("id", id);
 
   if (error) throw new Error(error.message);
 
-  // Also cancel all active bookings for this class
-  await getSupabaseClient()
-    .from("bookings")
-    .update({ status: "cancelled" })
-    .eq("class_id", id)
-    .eq("status", "booked");
+  // 5. Record in admin action logs
+  await db.from("admin_action_logs").insert({
+    class_id: id,
+    action_type: "cancel_class",
+    target_user_name: "ยกเลิกคลาส",
+    notes: `ยกเลิกการจอง ${active.length} รายการ · คืนเซสชัน ${bookedOnes.length} แพ็กเกจ`,
+  });
+
+  return { cancelledBookings: active.length };
 }
 
 export async function markClassCompleted(id: string): Promise<void> {
@@ -467,7 +499,7 @@ export async function adminCancelBooking(bookingId: string, bookingUserId: strin
 
 export async function logAdminAction(
   classId: string,
-  actionType: "book" | "standby" | "cancel" | "promote",
+  actionType: "book" | "standby" | "cancel" | "promote" | "cancel_class",
   targetUserName: string,
   notes?: string
 ): Promise<void> {
