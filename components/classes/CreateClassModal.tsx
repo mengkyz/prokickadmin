@@ -24,8 +24,16 @@ interface Props {
   onCreated?: (cls: AdminClass | number) => void;
 }
 
+// Max repeat end date: today + 1 month
+function getMaxRepeatDate(): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() + 1);
+  return d.toISOString().split("T")[0];
+}
+
 export function CreateClassModal({ open, onClose, onCreated }: Props) {
   const { showToast } = useToast();
+  const maxRepeatDate = getMaxRepeatDate();
   const [saving, setSaving] = useState(false);
   const [recur, setRecur] = useState("none");
   const [selectedDays, setSelectedDays] = useState<number[]>([1, 4]);
@@ -126,6 +134,7 @@ export function CreateClassModal({ open, onClose, onCreated }: Props) {
         onCreated?.(cls);
       } else {
         if (!recurEnd) { showToast("กรุณาเลือกวันสิ้นสุด", "error"); setSaving(false); return; }
+        if (recurEnd > maxRepeatDate) { showToast(`วันสิ้นสุดต้องไม่เกิน ${maxRepeatDate} (1 เดือนข้างหน้า)`, "error"); setSaving(false); return; }
         const endDate = new Date(recurEnd);
         const dates = generateDates(baseStart, endDate, recur, selectedDays);
         if (dates.length === 0) { showToast("ไม่พบวันที่ตรงเงื่อนไข", "error"); setSaving(false); return; }
@@ -257,7 +266,10 @@ export function CreateClassModal({ open, onClose, onCreated }: Props) {
                 </div>
               )}
               <FormItem label="วันสิ้นสุดการซ้ำ">
-                <input type="date" value={recurEnd} onChange={(e) => setRecurEnd(e.target.value)} />
+                <input type="date" value={recurEnd} max={maxRepeatDate} onChange={(e) => setRecurEnd(e.target.value)} />
+                <div style={{ fontSize: 10, color: "var(--tm)", marginTop: 3 }}>
+                  สูงสุด {maxRepeatDate} (1 เดือนข้างหน้า)
+                </div>
               </FormItem>
             </div>
           )}
