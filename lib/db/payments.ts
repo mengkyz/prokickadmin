@@ -102,6 +102,10 @@ interface PaymentRow {
   target_id?: string | null;
   // Promo code (column is promo_id in DB)
   promo_id?: string | null;
+  // New pricing columns (available on records from new app version)
+  full_price?: number | null;
+  discount_amount?: number | null;
+  net_price?: number | null;
   // joined
   profiles?: { full_name: string; phone_number: string | null } | null;
   child_profiles?: { nickname: string } | null;
@@ -250,12 +254,18 @@ function rowToAdminPayment(row: PaymentRow): AdminPayment {
     promoDiscount: row.promo_codes?.discount ?? null,
     promoDiscountType: row.promo_codes?.discount_type ?? null,
     discountAmount: (() => {
+      // Prefer new dedicated columns (records from new app version)
+      if (row.discount_amount != null && row.discount_amount > 0) return row.discount_amount;
+      // Fall back: compute from expected_amount vs actual amount (old records)
       const orig = row.expected_amount != null ? Math.round(row.expected_amount * 100) / 100 : null;
       const paid = amount != null ? Math.round(amount * 100) / 100 : null;
       if (orig != null && paid != null && orig !== paid) return Math.round((orig - paid) * 100) / 100;
       return null;
     })(),
     originalAmount: (() => {
+      // Prefer new dedicated columns
+      if (row.full_price != null && row.discount_amount != null && row.discount_amount > 0) return row.full_price;
+      // Fall back: use expected_amount vs actual amount (old records)
       const orig = row.expected_amount != null ? Math.round(row.expected_amount * 100) / 100 : null;
       const paid = amount != null ? Math.round(amount * 100) / 100 : null;
       if (orig != null && paid != null && orig !== paid) return orig;
