@@ -581,12 +581,7 @@ export default function PaymentsPage() {
                       {pay.slipokSuccess ? (
                         <Badge variant="green">✅ สำเร็จ</Badge>
                       ) : (
-                        <div>
-                          <Badge variant="red">❌ ล้มเหลว</Badge>
-                          {pay.errorCode && (
-                            <div style={{ fontSize: 9, color: "var(--red)", marginTop: 2 }}>#{pay.errorCode}</div>
-                          )}
-                        </div>
+                        <Badge variant="red">❌ ล้มเหลว</Badge>
                       )}
                     </td>
 
