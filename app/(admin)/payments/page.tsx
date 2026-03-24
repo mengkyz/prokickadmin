@@ -525,6 +525,15 @@ export default function PaymentsPage() {
                             </div>
                           )}
                         </div>
+                      ) : pay.paymentType === "new_package" ? (
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 600 }}>📦 ซื้อแพ็กเกจ</div>
+                          {pay.packageName && (
+                            <div style={{ fontSize: 10, color: "var(--t2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {pay.packageName}{pay.packageType ? ` · ${packageTypeLabel(pay.packageType)}` : ""}
+                            </div>
+                          )}
+                        </div>
                       ) : pay.packageName ? (
                         <div>
                           <div style={{ fontSize: 11, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
