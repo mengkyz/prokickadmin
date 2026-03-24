@@ -294,6 +294,14 @@ export default function PaymentsPage() {
   // Modals
   const [detailPay,    setDetailPay]    = useState<AdminPayment | null>(null);
   const [editPayOpen,  setEditPayOpen]  = useState(false);
+  const [bankName,     setBankName]     = useState("ธนาคารกสิกรไทย (KBank)");
+  const [acctNumber,   setAcctNumber]   = useState("012-3-45678-9");
+  const [acctName,     setAcctName]     = useState("บจก. โปรคิก อะคาเดมี่");
+  const [acctError,    setAcctError]    = useState("");
+  // Draft values while modal is open
+  const [draftBank,    setDraftBank]    = useState(bankName);
+  const [draftAcct,    setDraftAcct]    = useState(acctNumber);
+  const [draftName,    setDraftName]    = useState(acctName);
 
   // ── Loader ──────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -361,13 +369,13 @@ export default function PaymentsPage() {
           <CardHeader
             icon="🏦"
             title="ข้อมูลรับชำระเงิน"
-            actions={<Button variant="primary" size="sm" onClick={() => setEditPayOpen(true)}>✏️ แก้ไข</Button>}
+            actions={<Button variant="primary" size="sm" onClick={() => { setDraftBank(bankName); setDraftAcct(acctNumber); setDraftName(acctName); setEditPayOpen(true); }}>✏️ แก้ไข</Button>}
           />
           <div style={{ padding: 14 }}>
             <div style={{ background: "linear-gradient(135deg, #009B3A, #007A2F)", borderRadius: 12, padding: 20, color: "#fff", marginBottom: 14 }}>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,.65)", marginBottom: 3, fontWeight: 600, letterSpacing: 0.5 }}>KBANK · ธนาคารกสิกรไทย</div>
-              <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", letterSpacing: 2, marginBottom: 4 }}>012-3-45678-9</div>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>บจก. โปรคิก อะคาเดมี่</div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,.65)", marginBottom: 3, fontWeight: 600, letterSpacing: 0.5 }}>{bankName}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", letterSpacing: 2, marginBottom: 4 }}>{acctNumber}</div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{acctName}</div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ width: 80, height: 80, background: "var(--bg)", borderRadius: 10, border: "1.5px solid var(--bd)", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 4 }}>
@@ -388,24 +396,24 @@ export default function PaymentsPage() {
           <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 9 }}>
             {[
               {
-                label: "✅ ยืนยันแล้ว",
-                value: loading ? "…" : String(summary?.successThisMonth ?? 0),
-                bg: "var(--green-l)", border: "var(--green)", color: "var(--green)",
-              },
-              {
-                label: "💰 รายได้เดือนนี้",
-                value: loading ? "…" : `${(summary?.revenueThisMonth ?? 0).toLocaleString()} ฿`,
-                bg: "var(--blue-l)", border: "var(--blue)", color: "var(--blue)",
-              },
-              {
                 label: "📋 รายการทั้งหมด",
                 value: loading ? "…" : String(summary?.totalThisMonth ?? 0),
                 bg: "var(--card-h)", border: "var(--bd)", color: "var(--t2)",
               },
               {
+                label: "✅ ยืนยันแล้ว",
+                value: loading ? "…" : String(summary?.successThisMonth ?? 0),
+                bg: "var(--green-l)", border: "var(--green)", color: "var(--green)",
+              },
+              {
                 label: "❌ ล้มเหลว",
                 value: loading ? "…" : String(summary?.failedThisMonth ?? 0),
                 bg: "var(--red-l)", border: "var(--red)", color: "var(--red)",
+              },
+              {
+                label: "💰 รายได้เดือนนี้",
+                value: loading ? "…" : `${(summary?.revenueThisMonth ?? 0).toLocaleString()} ฿`,
+                bg: "var(--blue-l)", border: "var(--blue)", color: "var(--blue)",
               },
             ].map((item, i) => (
               <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 12px", background: item.bg, borderRadius: 8, borderLeft: `3px solid ${item.border}` }}>
@@ -603,20 +611,57 @@ export default function PaymentsPage() {
       {/* ── Edit payment method modal ─────────────────────── */}
       <Modal
         open={editPayOpen}
-        onClose={() => setEditPayOpen(false)}
+        onClose={() => { setEditPayOpen(false); setAcctError(""); }}
         title="✏️ แก้ไขข้อมูลรับชำระเงิน"
         width={480}
         footer={
           <DefaultFooter
-            onCancel={() => setEditPayOpen(false)}
-            onConfirm={() => { setEditPayOpen(false); showToast("บันทึกแล้ว"); }}
+            onCancel={() => { setEditPayOpen(false); setAcctError(""); }}
+            onConfirm={() => {
+              const digits = draftAcct.replace(/-/g, "");
+              if (digits.length !== 10) {
+                setAcctError("กรุณากรอกเลขบัญชีให้ครบ 10 หลัก");
+                return;
+              }
+              setBankName(draftBank);
+              setAcctNumber(draftAcct);
+              setAcctName(draftName);
+              setAcctError("");
+              setEditPayOpen(false);
+              showToast("บันทึกแล้ว");
+            }}
           />
         }
       >
         <FormGrid>
-          <FormItem label="ธนาคาร" full><input type="text" defaultValue="ธนาคารกสิกรไทย (KBank)" /></FormItem>
-          <FormItem label="เลขบัญชี" full><input type="text" defaultValue="012-3-45678-9" /></FormItem>
-          <FormItem label="ชื่อบัญชี" full><input type="text" defaultValue="บจก. โปรคิก อะคาเดมี่" /></FormItem>
+          <FormItem label="ธนาคาร" full>
+            <input type="text" value={draftBank} onChange={(e) => setDraftBank(e.target.value)} />
+          </FormItem>
+          <FormItem label="เลขบัญชี" full>
+            <input
+              type="text"
+              value={draftAcct}
+              placeholder="012-3-45678-9"
+              maxLength={13}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
+                let formatted = digits;
+                if (digits.length > 3)  formatted = digits.slice(0, 3) + "-" + digits.slice(3);
+                if (digits.length > 4)  formatted = digits.slice(0, 3) + "-" + digits.slice(3, 4) + "-" + digits.slice(4);
+                if (digits.length > 9)  formatted = digits.slice(0, 3) + "-" + digits.slice(3, 4) + "-" + digits.slice(4, 9) + "-" + digits.slice(9);
+                setDraftAcct(formatted);
+                setAcctError("");
+              }}
+              style={acctError ? { borderColor: "var(--red)" } : undefined}
+            />
+            {acctError
+              ? <div style={{ fontSize: 11, color: "var(--red)", marginTop: 3 }}>{acctError}</div>
+              : <div style={{ fontSize: 10, color: "var(--tm)", marginTop: 3 }}>รูปแบบ: XXX-X-XXXXX-X (10 หลัก)</div>
+            }
+          </FormItem>
+          <FormItem label="ชื่อบัญชี" full>
+            <input type="text" value={draftName} onChange={(e) => setDraftName(e.target.value)} />
+          </FormItem>
           <FormItem label="QR Code PromptPay" full>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{ width: 80, height: 80, background: "var(--bg)", border: "1.5px dashed var(--bd2)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "var(--tm)", cursor: "pointer" }}>📷 อัปโหลด</div>
