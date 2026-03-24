@@ -535,9 +535,17 @@ export default function PaymentsPage() {
                           )}
                         </div>
                       ) : (
-                        <span style={{ fontSize: 11, color: "var(--tm)" }}>
-                          {paymentTypeLabel(pay.paymentType).icon} {paymentTypeLabel(pay.paymentType).label}
-                        </span>
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 600 }}>
+                            {pay.paymentType === "package" ? "📦 ซื้อแพ็กเกจ"
+                              : pay.paymentType === "extra_session" ? "🎫 ซื้อคลาสเพิ่ม"
+                              : pay.packageId ? "📦 ซื้อแพ็กเกจ"
+                              : "💳 ชำระเงิน"}
+                          </div>
+                          {pay.packageType && (
+                            <div style={{ fontSize: 10, color: "var(--tm)" }}>{packageTypeLabel(pay.packageType)}</div>
+                          )}
+                        </div>
                       )}
                       {pay.childName && (
                         <div style={{ fontSize: 10, color: "var(--tm)", marginTop: 1 }}>👶 {pay.childName}</div>
