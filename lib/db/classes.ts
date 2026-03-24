@@ -285,43 +285,33 @@ export async function updateClass(id: string, input: Partial<ClassInput>): Promi
 export async function cancelClass(id: string): Promise<{ cancelledBookings: number }> {
   const db = getSupabaseClient();
 
-  // 1. Fetch all active bookings (booked + standby)
+  // 1. Fetch all active bookings (booked + standby), including user_id for RPC call
   const { data: bookings, error: bErr } = await db
     .from("bookings")
-    .select("id, package_id, status")
+    .select("id, user_id, status")
     .eq("class_id", id)
     .in("status", ["booked", "standby"]);
 
   if (bErr) throw new Error(bErr.message);
 
-  const active = (bookings ?? []) as { id: string; package_id: string; status: string }[];
-  const bookedOnes = active.filter((b) => b.status === "booked");
+  const active = (bookings ?? []) as { id: string; user_id: string; status: string }[];
+  const standbyOnes = active.filter((b) => b.status === "standby");
+  const bookedOnes  = active.filter((b) => b.status === "booked");
 
-  // 2. Refund sessions for "booked" users (standby users never had sessions deducted)
+  // 2. Cancel standbys FIRST via RPC — so when booked users are cancelled,
+  //    no standby promotion occurs (queue is already empty)
+  for (const b of standbyOnes) {
+    await db.rpc("cancel_booking", { p_booking_id: b.id, p_user_id: b.user_id });
+  }
+
+  // 3. Cancel booked bookings via the same RPC used for manual cancellations.
+  //    The RPC runs as SECURITY DEFINER, atomically does:
+  //    remaining_sessions += 1  +  decrements current_bookings on the class
   for (const b of bookedOnes) {
-    const { data: pkg } = await db
-      .from("user_packages")
-      .select("remaining_sessions")
-      .eq("id", b.package_id)
-      .single();
-    if (pkg) {
-      await db
-        .from("user_packages")
-        .update({ remaining_sessions: (pkg as { remaining_sessions: number }).remaining_sessions + 1 })
-        .eq("id", b.package_id);
-    }
+    await db.rpc("cancel_booking", { p_booking_id: b.id, p_user_id: b.user_id });
   }
 
-  // 3. Cancel all active bookings
-  if (active.length > 0) {
-    await db
-      .from("bookings")
-      .update({ status: "cancelled", attendance_status: "cancelled" })
-      .eq("class_id", id)
-      .in("status", ["booked", "standby"]);
-  }
-
-  // 4. Cancel the class
+  // 4. Cancel the class itself
   const { error } = await db
     .from("classes")
     .update({ status: "cancelled" })
