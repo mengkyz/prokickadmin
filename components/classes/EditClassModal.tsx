@@ -104,8 +104,13 @@ export function EditClassModal({ open, onClose, cls, onSaved, onCancelled }: Pro
     if (!confirm("ยืนยันการยกเลิกคลาสนี้? การจองทั้งหมดจะถูกยกเลิกด้วย")) return;
     setSaving(true);
     try {
-      await cancelClass(cls.id);
-      showToast("ยกเลิกคลาสแล้ว", "error");
+      const { cancelledBookings } = await cancelClass(cls.id);
+      showToast(
+        cancelledBookings > 0
+          ? `ยกเลิกคลาสแล้ว · ยกเลิกการจอง ${cancelledBookings} รายการ`
+          : "ยกเลิกคลาสแล้ว",
+        "error"
+      );
       onCancelled?.(cls.id);
       onClose();
     } catch (err) {

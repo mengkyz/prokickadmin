@@ -158,8 +158,9 @@ export function IncomingDetailModal({ open, cls, onClose }: Props) {
       case "book":    return { label: "จองให้",    color: "var(--green)" };
       case "standby": return { label: "คิวรอ",     color: "var(--orange)" };
       case "cancel":  return { label: "ยกเลิก",    color: "var(--red)" };
-      case "promote": return { label: "เลื่อนขึ้น", color: "var(--blue)" };
-      default:        return { label: type,        color: "var(--tm)" };
+      case "promote":       return { label: "เลื่อนขึ้น",   color: "var(--blue)" };
+      case "cancel_class":  return { label: "ยกเลิกคลาส",  color: "var(--red)" };
+      default:              return { label: type,           color: "var(--tm)" };
     }
   }
 
