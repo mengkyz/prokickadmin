@@ -339,6 +339,175 @@ export async function promoteFromWaitlist(bookingId: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+// ── ADMIN BOOKING ─────────────────────────────────────────
+
+export interface EligiblePackage {
+  id: string;
+  name: string;
+  remainingSessions: number;
+  expiryDate: string;
+  childId: string | null;
+  childName: string | null;
+}
+
+export interface EligibleUser {
+  userId: string;
+  name: string;
+  phone: string;
+  packages: EligiblePackage[];
+}
+
+export interface AdminActionLog {
+  id: string;
+  createdAt: string;
+  actionType: string;
+  targetUserName: string;
+  notes: string | null;
+}
+
+type EligiblePkgRow = {
+  id: string;
+  user_id: string;
+  child_id: string | null;
+  remaining_sessions: number;
+  expiry_date: string;
+  package_templates: { name: string; type: string } | null;
+  profiles: { full_name: string; phone_number: string | null } | null;
+  child_profiles: { nickname: string } | null;
+};
+
+export async function fetchEligibleUsers(
+  packageFilter: PackageFilter,
+  classId: string
+): Promise<EligibleUser[]> {
+  // Get already-booked user+child combos (exclude cancelled)
+  const { data: existing } = await getSupabaseClient()
+    .from("bookings")
+    .select("user_id, child_id")
+    .eq("class_id", classId)
+    .neq("status", "cancelled");
+
+  const bookedKeys = new Set(
+    ((existing ?? []) as { user_id: string; child_id: string | null }[]).map(
+      (b) => `${b.user_id}::${b.child_id ?? ""}`
+    )
+  );
+
+  const { data, error } = await getSupabaseClient()
+    .from("user_packages")
+    .select(`
+      id, user_id, child_id, remaining_sessions, expiry_date,
+      package_templates(name, type),
+      profiles(full_name, phone_number),
+      child_profiles!child_id(nickname)
+    `)
+    .eq("status", "active")
+    .gt("remaining_sessions", 0);
+
+  if (error) throw new Error(error.message);
+
+  const userMap = new Map<string, EligibleUser>();
+
+  for (const row of (data ?? []) as unknown as EligiblePkgRow[]) {
+    const pkgType = row.package_templates?.type;
+    if (packageFilter !== "all" && pkgType !== packageFilter) continue;
+
+    const key = `${row.user_id}::${row.child_id ?? ""}`;
+    if (bookedKeys.has(key)) continue;
+
+    if (!userMap.has(row.user_id)) {
+      userMap.set(row.user_id, {
+        userId: row.user_id,
+        name: row.profiles?.full_name ?? "Unknown",
+        phone: row.profiles?.phone_number ?? "",
+        packages: [],
+      });
+    }
+
+    userMap.get(row.user_id)!.packages.push({
+      id: row.id,
+      name: row.package_templates?.name ?? "Package",
+      remainingSessions: row.remaining_sessions,
+      expiryDate: row.expiry_date,
+      childId: row.child_id,
+      childName: row.child_profiles?.nickname ?? null,
+    });
+  }
+
+  return Array.from(userMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function adminBookClass(
+  classId: string,
+  userId: string,
+  packageId: string,
+  childId: string | null = null
+): Promise<{ success: boolean; status: "booked" | "standby"; message: string }> {
+  const { data, error } = await getSupabaseClient().rpc("book_class", {
+    p_class_id: classId,
+    p_user_id: userId,
+    p_package_id: packageId,
+    p_child_id: childId,
+  });
+  if (error) throw new Error(error.message);
+  const result = data as { success: boolean; status: string; message: string };
+  if (!result.success) throw new Error(result.message);
+  return result as { success: boolean; status: "booked" | "standby"; message: string };
+}
+
+export async function adminCancelBooking(bookingId: string, bookingUserId: string): Promise<void> {
+  const { data, error } = await getSupabaseClient().rpc("cancel_booking", {
+    p_booking_id: bookingId,
+    p_user_id: bookingUserId,
+  });
+  if (error) throw new Error(error.message);
+  const result = data as { success: boolean; message: string };
+  if (!result.success) throw new Error(result.message);
+}
+
+export async function logAdminAction(
+  classId: string,
+  actionType: "book" | "standby" | "cancel" | "promote",
+  targetUserName: string,
+  notes?: string
+): Promise<void> {
+  await getSupabaseClient().from("admin_action_logs").insert({
+    class_id: classId,
+    action_type: actionType,
+    target_user_name: targetUserName,
+    notes: notes ?? null,
+  });
+}
+
+export async function fetchAdminActionLogs(classId: string): Promise<AdminActionLog[]> {
+  const { data, error } = await getSupabaseClient()
+    .from("admin_action_logs")
+    .select("id, created_at, action_type, target_user_name, notes")
+    .eq("class_id", classId)
+    .order("created_at", { ascending: false });
+
+  if (error) return [];
+
+  return ((data ?? []) as {
+    id: string;
+    created_at: string;
+    action_type: string;
+    target_user_name: string;
+    notes: string | null;
+  }[]).map((r) => ({
+    id: r.id,
+    createdAt: new Date(r.created_at).toLocaleDateString("th-TH", {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    actionType: r.action_type,
+    targetUserName: r.target_user_name,
+    notes: r.notes,
+  }));
+}
+
 // ── DATE RANGE HELPERS (used by page) ────────────────────
 export function todayRange(): { from: string; to: string } {
   const start = new Date();
