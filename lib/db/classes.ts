@@ -540,6 +540,68 @@ export async function fetchAdminActionLogs(classId: string): Promise<AdminAction
   }));
 }
 
+// ── CLASS DELETE ──────────────────────────────────────────
+
+/** Returns a map of classId → deletable (true = no active bookings) */
+export async function checkClassesDeletable(ids: string[]): Promise<Record<string, boolean>> {
+  if (ids.length === 0) return {};
+
+  const { data } = await getSupabaseClient()
+    .from("bookings")
+    .select("class_id")
+    .in("class_id", ids)
+    .in("status", ["booked", "standby"]);
+
+  const busy = new Set(((data ?? []) as { class_id: string }[]).map((r) => r.class_id));
+  const result: Record<string, boolean> = {};
+  for (const id of ids) result[id] = !busy.has(id);
+  return result;
+}
+
+/** Delete a single class — throws if it has active bookings */
+export async function deleteClass(classId: string): Promise<void> {
+  const { data } = await getSupabaseClient()
+    .from("bookings")
+    .select("id")
+    .eq("class_id", classId)
+    .in("status", ["booked", "standby"])
+    .limit(1);
+
+  if ((data ?? []).length > 0) throw new Error("ไม่สามารถลบคลาสที่มีการจองได้");
+
+  const { error } = await getSupabaseClient()
+    .from("classes")
+    .delete()
+    .eq("id", classId);
+
+  if (error) throw new Error(error.message);
+}
+
+/** Delete multiple classes, skipping those with active bookings */
+export async function deleteClasses(classIds: string[]): Promise<{ deleted: number; skipped: number }> {
+  if (classIds.length === 0) return { deleted: 0, skipped: 0 };
+
+  const { data } = await getSupabaseClient()
+    .from("bookings")
+    .select("class_id")
+    .in("class_id", classIds)
+    .in("status", ["booked", "standby"]);
+
+  const busy = new Set(((data ?? []) as { class_id: string }[]).map((r) => r.class_id));
+  const toDelete = classIds.filter((id) => !busy.has(id));
+  const skipped  = classIds.length - toDelete.length;
+
+  if (toDelete.length > 0) {
+    const { error } = await getSupabaseClient()
+      .from("classes")
+      .delete()
+      .in("id", toDelete);
+    if (error) throw new Error(error.message);
+  }
+
+  return { deleted: toDelete.length, skipped };
+}
+
 // ── DATE RANGE HELPERS (used by page) ────────────────────
 export function todayRange(): { from: string; to: string } {
   const start = new Date();

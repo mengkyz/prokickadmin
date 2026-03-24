@@ -11,8 +11,9 @@ import { EditClassModal } from "@/components/classes/EditClassModal";
 import { IncomingDetailModal } from "@/components/classes/IncomingDetailModal";
 import { HistoryDetailModal } from "@/components/classes/HistoryDetailModal";
 import { ExportClassesModal } from "@/components/classes/ExportClassesModal";
-import { fetchClasses, todayRange, weekRange } from "@/lib/db/classes";
+import { fetchClasses, todayRange, weekRange, checkClassesDeletable, deleteClass, deleteClasses } from "@/lib/db/classes";
 import type { AdminClass } from "@/lib/db/classes";
+import { Modal } from "@/components/ui/Modal";
 
 type ModalType = "none" | "create" | "edit" | "incoming-detail" | "history-detail" | "export";
 type DateFilter = "today" | "week" | "custom";
@@ -32,6 +33,12 @@ export default function ClassesPage() {
 
   const [selectedIn,   setSelectedIn]   = useState<Set<string>>(new Set());
   const [selectedHist, setSelectedHist] = useState<Set<string>>(new Set());
+
+  // Delete state
+  const [deletableMap, setDeletableMap] = useState<Record<string, boolean>>({});
+  const [deleteTarget, setDeleteTarget] = useState<AdminClass | null>(null);
+  const [deleteBatchConfirm, setDeleteBatchConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // ── Filter dropdowns ─────────────────────────────────────
   const [filterVenue,  setFilterVenue]  = useState("");
@@ -62,6 +69,14 @@ export default function ClassesPage() {
       }
       const data = await fetchClasses(range);
       setClasses(data);
+      // Check deletability for all loaded classes
+      const allIds = data.map((c) => c.id);
+      if (allIds.length > 0) {
+        const dm = await checkClassesDeletable(allIds);
+        setDeletableMap(dm);
+      } else {
+        setDeletableMap({});
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -119,6 +134,38 @@ export default function ClassesPage() {
   function openHistoryDetail(cls: AdminClass) {
     setDetailTarget(cls);
     setModal("history-detail");
+  }
+
+  // ── Delete handlers ───────────────────────────────────────
+  async function handleDeleteOne() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteClass(deleteTarget.id);
+      setClasses((prev) => prev.filter((c) => c.id !== deleteTarget.id));
+      setDeletableMap((prev) => { const n = { ...prev }; delete n[deleteTarget.id]; return n; });
+      setDeleteTarget(null);
+    } catch (err) {
+      alert((err as Error).message);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function handleDeleteBatch() {
+    setDeleting(true);
+    const ids = Array.from(selectedIn);
+    try {
+      const { deleted, skipped } = await deleteClasses(ids);
+      await load();
+      setSelectedIn(new Set());
+      setDeleteBatchConfirm(false);
+      alert(`ลบแล้ว ${deleted} คลาส${skipped > 0 ? ` · ข้าม ${skipped} คลาสที่มีการจอง` : ""}`);
+    } catch (err) {
+      alert((err as Error).message);
+    } finally {
+      setDeleting(false);
+    }
   }
 
   // ── Status badge ──────────────────────────────────────────
@@ -222,9 +269,18 @@ export default function ClassesPage() {
 
                     <div style={{ marginLeft: "auto", display: "flex", gap: 7, alignItems: "center" }}>
                       {selectedIn.size > 0 && (
-                        <Button variant="ghost" size="sm" onClick={() => setModal("export")}>
-                          📥 Export ที่เลือก ({selectedIn.size})
-                        </Button>
+                        <>
+                          <Button variant="ghost" size="sm" onClick={() => setModal("export")}>
+                            📥 Export ที่เลือก ({selectedIn.size})
+                          </Button>
+                          <Button
+                            size="sm"
+                            style={{ background: "var(--red-l)", color: "var(--red)", border: "1.5px solid var(--red)", fontSize: 11 }}
+                            onClick={() => setDeleteBatchConfirm(true)}
+                          >
+                            🗑️ ลบที่เลือก ({selectedIn.size})
+                          </Button>
+                        </>
                       )}
                       <Button variant="primary" size="sm" onClick={() => setModal("create")}>
                         + สร้างคลาส
@@ -271,6 +327,21 @@ export default function ClassesPage() {
                               <div style={{ display: "flex", gap: 5 }}>
                                 <Button variant="ghost" size="sm" onClick={() => openIncomingDetail(cls)}>ดู/จัดการ</Button>
                                 <Button variant="ghost" size="sm" onClick={() => openEdit(cls)}>แก้ไข</Button>
+                                <Button
+                                  size="sm"
+                                  disabled={!deletableMap[cls.id]}
+                                  title={deletableMap[cls.id] ? "ลบคลาส" : "มีการจอง — ไม่สามารถลบได้"}
+                                  style={{
+                                    background: deletableMap[cls.id] ? "var(--red-l)" : "var(--bg)",
+                                    color: deletableMap[cls.id] ? "var(--red)" : "var(--tm)",
+                                    border: `1.5px solid ${deletableMap[cls.id] ? "var(--red)" : "var(--bd)"}`,
+                                    cursor: deletableMap[cls.id] ? "pointer" : "not-allowed",
+                                    fontSize: 11,
+                                  }}
+                                  onClick={() => deletableMap[cls.id] && setDeleteTarget(cls)}
+                                >
+                                  🗑️
+                                </Button>
                               </div>
                             </td>
                           </tr>
@@ -400,6 +471,80 @@ export default function ClassesPage() {
         open={modal === "export"}
         onClose={() => setModal("none")}
       />
+
+      {/* ── Single delete confirm ── */}
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="🗑️ ยืนยันการลบคลาส"
+        width={400}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setDeleteTarget(null)} disabled={deleting}>ยกเลิก</Button>
+            <Button
+              size="sm"
+              style={{ background: "var(--red)", color: "#fff", border: "none" }}
+              onClick={handleDeleteOne}
+              disabled={deleting}
+            >
+              {deleting ? "กำลังลบ..." : "ลบคลาส"}
+            </Button>
+          </>
+        }
+      >
+        <div style={{ fontSize: 14, color: "var(--t2)", lineHeight: 1.7 }}>
+          <p>คุณต้องการลบคลาส</p>
+          <p style={{ fontWeight: 700, color: "var(--t1)" }}>
+            {deleteTarget
+              ? `${deleteTarget.packageFilter === "junior" ? "เด็ก" : deleteTarget.packageFilter === "adult" ? "ผู้ใหญ่" : ""} ${deleteTarget.dayLabel} ${deleteTarget.timeStart}–${deleteTarget.timeEnd}`.trim()
+              : ""}
+          </p>
+          <p style={{ fontSize: 12, color: "var(--tm)", marginTop: 4 }}>
+            การดำเนินการนี้ไม่สามารถย้อนกลับได้
+          </p>
+        </div>
+      </Modal>
+
+      {/* ── Batch delete confirm ── */}
+      {(() => {
+        const ids = Array.from(selectedIn);
+        const canDelete = ids.filter((id) => deletableMap[id]).length;
+        const willSkip  = ids.length - canDelete;
+        return (
+          <Modal
+            open={deleteBatchConfirm}
+            onClose={() => setDeleteBatchConfirm(false)}
+            title="🗑️ ยืนยันการลบคลาสที่เลือก"
+            width={420}
+            footer={
+              <>
+                <Button variant="ghost" onClick={() => setDeleteBatchConfirm(false)} disabled={deleting}>ยกเลิก</Button>
+                <Button
+                  size="sm"
+                  style={{ background: canDelete > 0 ? "var(--red)" : "var(--bd)", color: canDelete > 0 ? "#fff" : "var(--tm)", border: "none" }}
+                  onClick={handleDeleteBatch}
+                  disabled={deleting || canDelete === 0}
+                >
+                  {deleting ? "กำลังลบ..." : `ลบ ${canDelete} คลาส`}
+                </Button>
+              </>
+            }
+          >
+            <div style={{ fontSize: 14, color: "var(--t2)", lineHeight: 1.7 }}>
+              <p>เลือกไว้ทั้งหมด <strong>{ids.length}</strong> คลาส</p>
+              <p style={{ color: "var(--green)", fontWeight: 600 }}>✓ ลบได้ {canDelete} คลาส (ไม่มีการจอง)</p>
+              {willSkip > 0 && (
+                <p style={{ color: "var(--orange)", fontWeight: 600 }}>⚠ ข้ามไป {willSkip} คลาส (มีการจอง/คิวรอ)</p>
+              )}
+              {canDelete === 0 && (
+                <p style={{ color: "var(--red)", fontSize: 12, marginTop: 4 }}>
+                  คลาสที่เลือกทั้งหมดมีการจอง ไม่สามารถลบได้
+                </p>
+              )}
+            </div>
+          </Modal>
+        );
+      })()}
     </>
   );
 }
