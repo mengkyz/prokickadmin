@@ -386,6 +386,7 @@ export default function ClassesPage() {
         open={modal === "incoming-detail"}
         onClose={() => { setModal("none"); setDetailTarget(null); }}
         cls={detailTarget}
+        onBookingChanged={load}
       />
 
       <HistoryDetailModal

@@ -20,9 +20,10 @@ interface Props {
   open: boolean;
   onClose: () => void;
   cls: AdminClass | null;
+  onBookingChanged?: () => void;
 }
 
-export function IncomingDetailModal({ open, cls, onClose }: Props) {
+export function IncomingDetailModal({ open, cls, onClose, onBookingChanged }: Props) {
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<"booked" | "waitlist" | "logs">("booked");
   const [bookings, setBookings] = useState<AdminBooking[]>([]);
@@ -75,6 +76,7 @@ export function IncomingDetailModal({ open, cls, onClose }: Props) {
       await adminCancelBooking(b.id, b.userId);
       if (cls) await logAdminAction(cls.id, "cancel", b.userName, "ยกเลิกโดยแอดมิน");
       showToast("ยกเลิกการจองแล้ว", "error");
+      onBookingChanged?.();
       await load();
     } catch (err) {
       showToast((err as Error).message, "error");
@@ -89,6 +91,7 @@ export function IncomingDetailModal({ open, cls, onClose }: Props) {
       await promoteFromWaitlist(b.id);
       if (cls) await logAdminAction(cls.id, "promote", b.userName, "เลื่อนขึ้นจากคิวโดยแอดมิน");
       showToast("ยืนยันผู้เรียนจากคิวแล้ว");
+      onBookingChanged?.();
       await load();
     } catch (err) {
       showToast((err as Error).message, "error");
@@ -132,6 +135,7 @@ export function IncomingDetailModal({ open, cls, onClose }: Props) {
       );
       setView("list");
       setActiveTab(result.status === "booked" ? "booked" : "waitlist");
+      onBookingChanged?.();
       await load();
     } catch (err) {
       showToast((err as Error).message, "error");
