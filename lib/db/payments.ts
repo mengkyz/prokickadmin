@@ -99,6 +99,8 @@ interface PaymentRow {
   // Legacy extra columns
   payment_type?: string | null;
   expected_amount?: number | null;
+  // Promo code (column is promo_id in DB)
+  promo_id?: string | null;
   // joined
   profiles?: { full_name: string; phone_number: string | null } | null;
   child_profiles?: { nickname: string } | null;
@@ -106,6 +108,7 @@ interface PaymentRow {
     remaining_sessions: number;
     package_templates: { name: string; type: string; session_count: number; extra_session_price: number } | null;
   } | null;
+  promo_codes?: { code: string; discount: number; discount_type: string } | null;
 }
 
 // ── Public type ───────────────────────────────────────────────────────────────
@@ -144,6 +147,12 @@ export interface AdminPayment {
   packageSessions: number | null;
   remainingSessions: number | null;
   childName: string | null;
+  // promo / discount
+  promoCode: string | null;
+  promoDiscount: number | null;
+  promoDiscountType: string | null;   // "percent" | "fixed"
+  discountAmount: number | null;      // actual baht discount applied
+  originalAmount: number | null;      // amount before discount (expectedAmount or amount+discount)
   // derived
   userName: string | null;
   userPhone: string | null;
@@ -234,6 +243,21 @@ function rowToAdminPayment(row: PaymentRow): AdminPayment {
     childName: row.child_profiles?.nickname ?? null,
     userName: row.profiles?.full_name ?? null,
     userPhone: row.profiles?.phone_number ?? null,
+    promoCode: row.promo_codes?.code ?? null,
+    promoDiscount: row.promo_codes?.discount ?? null,
+    promoDiscountType: row.promo_codes?.discount_type ?? null,
+    discountAmount: (() => {
+      const orig = row.expected_amount != null ? Math.round(row.expected_amount * 100) / 100 : null;
+      const paid = amount != null ? Math.round(amount * 100) / 100 : null;
+      if (orig != null && paid != null && orig !== paid) return Math.round((orig - paid) * 100) / 100;
+      return null;
+    })(),
+    originalAmount: (() => {
+      const orig = row.expected_amount != null ? Math.round(row.expected_amount * 100) / 100 : null;
+      const paid = amount != null ? Math.round(amount * 100) / 100 : null;
+      if (orig != null && paid != null && orig !== paid) return orig;
+      return null;
+    })(),
     avatarColor: avatarColor(name ?? "?"),
     avatarInitial: avatarInitial(name ?? "?"),
     displayDate: formatSlipDateTime(transDate, transTime),
@@ -251,7 +275,7 @@ export async function fetchPayments(opts?: {
 }): Promise<AdminPayment[]> {
   let query = getSupabaseClient()
     .from("payment_logs")
-    .select(`*, profiles(full_name, phone_number), child_profiles(nickname), user_packages(remaining_sessions, package_templates(name, type, session_count, extra_session_price))`)
+    .select(`*, profiles(full_name, phone_number), child_profiles(nickname), user_packages(remaining_sessions, package_templates(name, type, session_count, extra_session_price)), promo_codes(code, discount, discount_type)`)
     .order("created_at", { ascending: false })
     .limit(opts?.limit ?? 200);
 
