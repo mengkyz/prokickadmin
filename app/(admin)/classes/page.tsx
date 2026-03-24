@@ -33,6 +33,7 @@ export default function ClassesPage() {
 
   const [selectedIn,   setSelectedIn]   = useState<Set<string>>(new Set());
   const [selectedHist, setSelectedHist] = useState<Set<string>>(new Set());
+  const [exportClasses, setExportClasses] = useState<AdminClass[]>([]);
 
   // Delete state
   const [deletableMap, setDeletableMap] = useState<Record<string, boolean>>({});
@@ -270,7 +271,7 @@ export default function ClassesPage() {
                     <div style={{ marginLeft: "auto", display: "flex", gap: 7, alignItems: "center" }}>
                       {selectedIn.size > 0 && (
                         <>
-                          <Button variant="ghost" size="sm" onClick={() => setModal("export")}>
+                          <Button variant="ghost" size="sm" onClick={() => { setExportClasses(incoming.filter((c) => selectedIn.has(c.id))); setModal("export"); }}>
                             📥 Export ที่เลือก ({selectedIn.size})
                           </Button>
                           <Button
@@ -374,7 +375,7 @@ export default function ClassesPage() {
                     </select>
                     <div style={{ marginLeft: "auto" }}>
                       {selectedHist.size > 0 && (
-                        <Button variant="ghost" size="sm" onClick={() => setModal("export")}>
+                        <Button variant="ghost" size="sm" onClick={() => { setExportClasses(history.filter((c) => selectedHist.has(c.id))); setModal("export"); }}>
                           📥 Export ที่เลือก ({selectedHist.size})
                         </Button>
                       )}
@@ -470,6 +471,7 @@ export default function ClassesPage() {
       <ExportClassesModal
         open={modal === "export"}
         onClose={() => setModal("none")}
+        classes={exportClasses}
       />
 
       {/* ── Single delete confirm ── */}

@@ -380,7 +380,7 @@ export default function UsersPage() {
         child={childTarget}
         onSaved={() => load()}
       />
-      <ExportUsersModal open={modal === "export"} onClose={() => setModal("none")} />
+      <ExportUsersModal open={modal === "export"} onClose={() => setModal("none")} users={users.filter((u) => selected.has(u.id))} />
     </>
   );
 }
