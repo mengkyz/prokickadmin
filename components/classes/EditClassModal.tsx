@@ -20,6 +20,7 @@ interface Props {
 export function EditClassModal({ open, onClose, cls, onSaved, onCancelled }: Props) {
   const { showToast } = useToast();
   const [saving, setSaving] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
 
   // Venues & coaches from DB
   const [venues, setVenues] = useState<AdminVenue[]>([]);
@@ -99,9 +100,8 @@ export function EditClassModal({ open, onClose, cls, onSaved, onCancelled }: Pro
     }
   }
 
-  async function handleCancel() {
+  async function handleConfirmCancel() {
     if (!cls) return;
-    if (!confirm("ยืนยันการยกเลิกคลาสนี้? การจองทั้งหมดจะถูกยกเลิกด้วย")) return;
     setSaving(true);
     try {
       const { cancelledBookings } = await cancelClass(cls.id);
@@ -111,6 +111,7 @@ export function EditClassModal({ open, onClose, cls, onSaved, onCancelled }: Pro
           : "ยกเลิกคลาสแล้ว",
         "error"
       );
+      setConfirmCancel(false);
       onCancelled?.(cls.id);
       onClose();
     } catch (err) {
@@ -121,6 +122,7 @@ export function EditClassModal({ open, onClose, cls, onSaved, onCancelled }: Pro
   }
 
   return (
+    <>
     <Modal
       open={open}
       onClose={onClose}
@@ -128,7 +130,7 @@ export function EditClassModal({ open, onClose, cls, onSaved, onCancelled }: Pro
       width={440}
       footer={
         <>
-          <Button variant="danger" size="sm" onClick={handleCancel} disabled={saving}>
+          <Button variant="danger" size="sm" onClick={() => setConfirmCancel(true)} disabled={saving}>
             ยกเลิกคลาส
           </Button>
           <Button variant="ghost" onClick={onClose} disabled={saving}>ยกเลิก</Button>
@@ -179,5 +181,44 @@ export function EditClassModal({ open, onClose, cls, onSaved, onCancelled }: Pro
         </FormItem>
       </FormGrid>
     </Modal>
+
+    {/* Confirm cancel class modal */}
+    <Modal
+      open={confirmCancel}
+      onClose={() => setConfirmCancel(false)}
+      title="🚫 ยืนยันการยกเลิกคลาส"
+      width={400}
+      footer={
+        <>
+          <Button variant="ghost" onClick={() => setConfirmCancel(false)} disabled={saving}>
+            ย้อนกลับ
+          </Button>
+          <Button
+            size="sm"
+            style={{ background: "var(--red)", color: "#fff", border: "none" }}
+            onClick={handleConfirmCancel}
+            disabled={saving}
+          >
+            {saving ? "กำลังยกเลิก..." : "ยืนยันยกเลิกคลาส"}
+          </Button>
+        </>
+      }
+    >
+      <div style={{ fontSize: 14, color: "var(--t2)", lineHeight: 1.7 }}>
+        <p>คุณต้องการยกเลิกคลาส</p>
+        <p style={{ fontWeight: 700, color: "var(--t1)" }}>
+          {cls
+            ? `${cls.packageFilter === "junior" ? "เด็ก" : cls.packageFilter === "adult" ? "ผู้ใหญ่" : ""} ${cls.dayLabel} ${cls.timeStart}–${cls.timeEnd}`.trim()
+            : ""}
+        </p>
+        <p style={{ color: "var(--red)", fontSize: 13, marginTop: 6 }}>
+          การจองและคิวรอทั้งหมดจะถูกยกเลิก และเซสชันจะถูกคืนให้ผู้จองทุกคน
+        </p>
+        <p style={{ fontSize: 12, color: "var(--tm)", marginTop: 4 }}>
+          การดำเนินการนี้ไม่สามารถย้อนกลับได้
+        </p>
+      </div>
+    </Modal>
+    </>
   );
 }
