@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS admin_action_logs (
   id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   created_at   TIMESTAMPTZ DEFAULT NOW(),
   class_id     UUID        REFERENCES classes(id) ON DELETE CASCADE,
-  action_type  TEXT        NOT NULL CHECK (action_type IN ('book', 'standby', 'cancel', 'promote')),
+  action_type  TEXT        NOT NULL CHECK (action_type IN ('book', 'standby', 'cancel', 'promote', 'cancel_class')),
   target_user_name TEXT    NOT NULL,
   notes        TEXT
 );
