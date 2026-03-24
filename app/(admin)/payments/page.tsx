@@ -21,7 +21,7 @@ import {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function paymentTypeLabel(type: string | null): { icon: string; label: string } {
   if (type === "extra_session") return { icon: "🎫", label: "ซื้อคลาสเพิ่มเติม" };
-  if (type === "package")       return { icon: "📦", label: "ซื้อแพ็กเกจ" };
+  if (type === "package" || type === "new_package") return { icon: "📦", label: "ซื้อแพ็กเกจ" };
   return { icon: "💳", label: "ชำระเงิน" };
 }
 
@@ -525,6 +525,15 @@ export default function PaymentsPage() {
                             </div>
                           )}
                         </div>
+                      ) : pay.paymentType === "new_package" ? (
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 600 }}>📦 ซื้อแพ็กเกจ</div>
+                          {pay.packageName && (
+                            <div style={{ fontSize: 10, color: "var(--t2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {pay.packageName}{pay.packageType ? ` · ${packageTypeLabel(pay.packageType)}` : ""}
+                            </div>
+                          )}
+                        </div>
                       ) : pay.packageName ? (
                         <div>
                           <div style={{ fontSize: 11, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -539,9 +548,11 @@ export default function PaymentsPage() {
                           {paymentTypeLabel(pay.paymentType).icon} {paymentTypeLabel(pay.paymentType).label}
                         </span>
                       )}
-                      {pay.childName && (
+                      {pay.childName ? (
                         <div style={{ fontSize: 10, color: "var(--tm)", marginTop: 1 }}>👶 {pay.childName}</div>
-                      )}
+                      ) : pay.userName ? (
+                        <div style={{ fontSize: 10, color: "var(--tm)", marginTop: 1 }}>👤 {pay.userName}</div>
+                      ) : null}
                     </td>
 
                     {/* Amount — with promo strikethrough tooltip */}
