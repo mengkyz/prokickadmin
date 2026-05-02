@@ -843,6 +843,93 @@ export async function deleteUserPackage(packageId: string, userId: string, child
   });
 }
 
+// Batch-check which users are safe to delete (no transactions, payment_logs, bookings, or packages)
+export async function checkUsersDeletable(userIds: string[]): Promise<Record<string, boolean>> {
+  if (userIds.length === 0) return {};
+  const sb = getSupabaseClient();
+
+  // Get children of these users
+  const { data: childData } = await sb
+    .from("child_profiles")
+    .select("id, parent_id")
+    .in("parent_id", userIds);
+
+  const children = (childData ?? []) as { id: string; parent_id: string }[];
+  const childIds = children.map((c) => c.id);
+  const childToParent: Record<string, string> = {};
+  for (const c of children) childToParent[c.id] = c.parent_id;
+
+  const [
+    { data: txData },
+    { data: payData },
+    { data: bookData },
+    { data: pkgData },
+    childPayRes,
+    childBookRes,
+    childPkgRes,
+  ] = await Promise.all([
+    sb.from("transactions").select("user_id").in("user_id", userIds),
+    sb.from("payment_logs").select("user_id").in("user_id", userIds),
+    sb.from("bookings").select("user_id").in("user_id", userIds),
+    sb.from("user_packages").select("user_id").in("user_id", userIds),
+    childIds.length > 0
+      ? sb.from("payment_logs").select("child_id").in("child_id", childIds)
+      : Promise.resolve({ data: [] as { child_id: string }[] }),
+    childIds.length > 0
+      ? sb.from("bookings").select("child_id").in("child_id", childIds)
+      : Promise.resolve({ data: [] as { child_id: string }[] }),
+    childIds.length > 0
+      ? sb.from("user_packages").select("child_id").in("child_id", childIds)
+      : Promise.resolve({ data: [] as { child_id: string }[] }),
+  ]);
+
+  const blocked = new Set<string>();
+  for (const r of (txData ?? []))  r.user_id  && blocked.add(r.user_id);
+  for (const r of (payData ?? []))  r.user_id  && blocked.add(r.user_id);
+  for (const r of (bookData ?? [])) r.user_id  && blocked.add(r.user_id);
+  for (const r of (pkgData ?? []))  r.user_id  && blocked.add(r.user_id);
+  for (const r of (childPayRes.data ?? [])) r.child_id && childToParent[r.child_id] && blocked.add(childToParent[r.child_id]);
+  for (const r of (childBookRes.data ?? [])) r.child_id && childToParent[r.child_id] && blocked.add(childToParent[r.child_id]);
+  for (const r of (childPkgRes.data ?? [])) r.child_id && childToParent[r.child_id] && blocked.add(childToParent[r.child_id]);
+
+  const result: Record<string, boolean> = {};
+  for (const id of userIds) result[id] = !blocked.has(id);
+  return result;
+}
+
+export async function deleteUser(userId: string): Promise<void> {
+  const sb = getSupabaseClient();
+
+  // Safety re-check before deleting
+  const deletable = await checkUsersDeletable([userId]);
+  if (!deletable[userId]) {
+    throw new Error("ไม่สามารถลบได้: ผู้ใช้นี้มีธุรกรรม การชำระเงิน หรือประวัติการจองที่เชื่อมอยู่");
+  }
+
+  // Get child IDs so we can clean up their logs
+  const { data: childData } = await sb
+    .from("child_profiles")
+    .select("id")
+    .eq("parent_id", userId);
+  const childIds = (childData ?? []).map((c: any) => c.id);
+
+  // Delete admin_logs for the user and their children (must go first due to FK)
+  const { error: logErr1 } = await sb.from("admin_logs").delete().eq("user_id", userId);
+  if (logErr1) throw new Error(logErr1.message);
+
+  if (childIds.length > 0) {
+    const { error: logErr2 } = await sb.from("admin_logs").delete().in("child_id", childIds);
+    if (logErr2) throw new Error(logErr2.message);
+
+    const { error: childErr } = await sb.from("child_profiles").delete().in("id", childIds);
+    if (childErr) throw new Error(childErr.message);
+  }
+
+  // Delete the profile
+  const { error: profileErr } = await sb.from("profiles").delete().eq("id", userId);
+  if (profileErr) throw new Error(profileErr.message);
+}
+
 // ── Internal: write admin log ─────────────────────────────
 async function writeAdminLog(opts: {
   userId: string;

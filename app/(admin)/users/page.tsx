@@ -8,9 +8,11 @@ import { ProgressBar } from "@/components/ui/ProgressBar";
 import { UserParentModal } from "@/components/users/UserParentModal";
 import { UserChildModal } from "@/components/users/UserChildModal";
 import { ExportUsersModal } from "@/components/users/ExportUsersModal";
-import { fetchUsers } from "@/lib/db/users";
+import { fetchUsers, checkUsersDeletable, deleteUser } from "@/lib/db/users";
 import type { AdminUser, AdminChild } from "@/lib/db/users";
+import { useToast } from "@/lib/context/ToastContext";
 import { useAuth } from "@/lib/context/AuthContext";
+import { Modal } from "@/components/ui/Modal";
 
 type Modal = "none" | "parent" | "child" | "export";
 
@@ -32,6 +34,7 @@ function sessionsTotal(pkg: { totalSessions: number; extraSessionsPurchased: num
 
 export default function UsersPage() {
   const { isAdmin } = useAuth();
+  const { showToast } = useToast();
   const [modal, setModal]             = useState<Modal>("none");
   const [selected, setSelected]       = useState<Set<string>>(new Set());
   const [users, setUsers]             = useState<AdminUser[]>([]);
@@ -39,6 +42,9 @@ export default function UsersPage() {
   const [error, setError]             = useState<string | null>(null);
   const [editTarget, setEditTarget]   = useState<AdminUser | null>(null);
   const [childTarget, setChildTarget] = useState<AdminChild | null>(null);
+  const [deletableUsers, setDeletableUsers] = useState<Record<string, boolean>>({});
+  const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
+  const [deletingId, setDeletingId]     = useState<string | null>(null);
 
   // Per-user/child selected package for table display (userId/childId → packageId)
   const [displayPkgMap, setDisplayPkgMap] = useState<Record<string, string>>({});
@@ -51,12 +57,32 @@ export default function UsersPage() {
   async function load() {
     setLoading(true);
     setError(null);
+    setDeleteTarget(null);
     try {
-      setUsers(await fetchUsers());
+      const loaded = await fetchUsers();
+      setUsers(loaded);
+      const ids = loaded.map((u) => u.id);
+      const deletable = await checkUsersDeletable(ids);
+      setDeletableUsers(deletable);
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleDeleteUser() {
+    if (!deleteTarget) return;
+    setDeletingId(deleteTarget.id);
+    try {
+      await deleteUser(deleteTarget.id);
+      showToast(`ลบผู้ใช้ "${deleteTarget.fullName}" สำเร็จ`, "success");
+      setDeleteTarget(null);
+      await load();
+    } catch (err) {
+      showToast((err as Error).message, "error");
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -286,10 +312,21 @@ export default function UsersPage() {
                       </Badge>
                     </td>
                     <td className="pk-mono">{dispPkg?.expiryDate ?? "—"}</td>
-                    <td>
-                      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); openParent(user); }}>
-                        {isAdmin ? "จัดการ" : "ดู"}
-                      </Button>
+                    <td onClick={(e) => e.stopPropagation()}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); openParent(user); }}>
+                          {isAdmin ? "จัดการ" : "ดู"}
+                        </Button>
+                        {isAdmin && deletableUsers[user.id] === true && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setDeleteTarget(user); }}
+                            title="ลบผู้ใช้"
+                            style={{ fontSize: 10, padding: "2px 7px", background: "none", color: "var(--red)", border: "1px solid var(--red)", borderRadius: 4, cursor: "pointer", fontFamily: "inherit", opacity: 0.75 }}
+                          >
+                            ลบ
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
 
@@ -385,6 +422,79 @@ export default function UsersPage() {
         isReadOnly={!isAdmin}
       />
       <ExportUsersModal open={modal === "export"} onClose={() => setModal("none")} users={users.filter((u) => selected.has(u.id))} />
+
+      {/* Delete user confirmation modal */}
+      <Modal
+        open={deleteTarget !== null}
+        onClose={() => { if (!deletingId) setDeleteTarget(null); }}
+        title="ยืนยันการลบผู้ใช้"
+        width={400}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setDeleteTarget(null)} disabled={!!deletingId}>
+              ยกเลิก
+            </Button>
+            <button
+              onClick={handleDeleteUser}
+              disabled={!!deletingId}
+              style={{
+                padding: "6px 16px",
+                background: deletingId ? "var(--bd2)" : "var(--red)",
+                color: "#fff",
+                border: "none",
+                borderRadius: 7,
+                cursor: deletingId ? "not-allowed" : "pointer",
+                fontFamily: "inherit",
+                fontWeight: 700,
+                fontSize: 13,
+                transition: "background 0.15s",
+              }}
+            >
+              {deletingId ? "กำลังลบ..." : "ยืนยันลบ"}
+            </button>
+          </>
+        }
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* User identity */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 44, height: 44, borderRadius: "50%", background: deleteTarget?.avatarColor, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
+              {deleteTarget?.avatarInitial}
+            </div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700 }}>{deleteTarget?.fullName}</div>
+              <div style={{ fontSize: 11, color: "var(--tm)" }}>{deleteTarget?.phone ?? "ไม่มีเบอร์โทร"}</div>
+            </div>
+          </div>
+
+          {/* Warning message */}
+          <div style={{ background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.25)", borderRadius: 8, padding: "12px 14px" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--red)", marginBottom: 4 }}>คำเตือน</div>
+            <div style={{ fontSize: 12, color: "var(--t2)", lineHeight: 1.6 }}>
+              การลบผู้ใช้นี้จะลบข้อมูลทั้งหมดของผู้ใช้และบุตรหลาน (ถ้ามี) ออกจากระบบอย่างถาวร การดำเนินการนี้ไม่สามารถย้อนกลับได้
+            </div>
+          </div>
+
+          {/* Children list if any */}
+          {(deleteTarget?.children.length ?? 0) > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--tm)", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 6 }}>
+                บุตรหลานที่จะถูกลบด้วย
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {deleteTarget!.children.map((c) => (
+                  <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", background: "var(--bg)", borderRadius: 6, border: "1px solid var(--bd)" }}>
+                    <div style={{ width: 22, height: 22, borderRadius: "50%", background: c.avatarColor, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, color: "#fff" }}>
+                      {c.avatarInitial}
+                    </div>
+                    <span style={{ fontSize: 12 }}>{c.nickname}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
     </>
   );
 }
