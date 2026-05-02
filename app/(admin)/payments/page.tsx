@@ -13,6 +13,7 @@ import {
   lastMonthRange,
   last3MonthsRange,
   bankInfo,
+  BANK_MAP,
   formatSlipDateTime,
   type AdminPayment,
   type PaymentSummary,
@@ -309,19 +310,19 @@ export default function PaymentsPage() {
   const [search,       setSearch]       = useState("");
 
   // Payment settings (loaded from DB)
-  const [bankName,     setBankName]     = useState("");
+  const [bankCode,     setBankCode]     = useState("");
   const [acctNumber,   setAcctNumber]   = useState("");
   const [acctName,     setAcctName]     = useState("");
   const [qrCodeBase64, setQrCodeBase64] = useState<string | null>(null);
 
   // Edit modal state
-  const [editPayOpen,  setEditPayOpen]  = useState(false);
-  const [draftBank,    setDraftBank]    = useState("");
-  const [draftAcct,    setDraftAcct]    = useState("");
-  const [draftName,    setDraftName]    = useState("");
-  const [draftQr,      setDraftQr]      = useState<string | null>(null);
-  const [acctError,    setAcctError]    = useState("");
-  const [isSaving,     setIsSaving]     = useState(false);
+  const [editPayOpen,      setEditPayOpen]      = useState(false);
+  const [draftBankCode,    setDraftBankCode]    = useState("");
+  const [draftAcct,        setDraftAcct]        = useState("");
+  const [draftName,        setDraftName]        = useState("");
+  const [draftQr,          setDraftQr]          = useState<string | null>(null);
+  const [acctError,        setAcctError]        = useState("");
+  const [isSaving,         setIsSaving]         = useState(false);
 
   // Slip detail modal
   const [detailPay,    setDetailPay]    = useState<AdminPayment | null>(null);
@@ -334,7 +335,7 @@ export default function PaymentsPage() {
     fetchPaymentSettings()
       .then((s) => {
         if (s) {
-          setBankName(s.bankName ?? "");
+          setBankCode(s.bankCode ?? "");
           setAcctNumber(s.accountNumber ?? "");
           setAcctName(s.accountName ?? "");
           setQrCodeBase64(s.qrCodeBase64 ?? null);
@@ -399,19 +400,20 @@ export default function PaymentsPage() {
       return;
     }
     if (!portalUser) return;
+    const selectedBank = BANK_MAP[draftBankCode];
     setIsSaving(true);
     try {
       await savePaymentSettings(
         {
-          bankName:      draftBank,
-          bankCode:      null,
+          bankName:      selectedBank ? `${selectedBank.short} — ${selectedBank.full}` : "",
+          bankCode:      draftBankCode || null,
           accountNumber: draftAcct,
           accountName:   draftName,
           qrCodeBase64:  draftQr,
         },
         portalUser.id
       );
-      setBankName(draftBank);
+      setBankCode(draftBankCode);
       setAcctNumber(draftAcct);
       setAcctName(draftName);
       setQrCodeBase64(draftQr);
@@ -443,7 +445,7 @@ export default function PaymentsPage() {
             title="ข้อมูลรับชำระเงิน"
             actions={isAdmin ? (
               <Button variant="primary" size="sm" onClick={() => {
-                setDraftBank(bankName);
+                setDraftBankCode(bankCode);
                 setDraftAcct(acctNumber);
                 setDraftName(acctName);
                 setDraftQr(qrCodeBase64);
@@ -455,7 +457,7 @@ export default function PaymentsPage() {
           <div style={{ padding: 14 }}>
             <div style={{ background: "linear-gradient(135deg, #009B3A, #007A2F)", borderRadius: 12, padding: 20, color: "#fff", marginBottom: 14 }}>
               <div style={{ fontSize: 11, color: "rgba(255,255,255,.65)", marginBottom: 3, fontWeight: 600, letterSpacing: 0.5 }}>
-                {bankName || "—"}
+                {bankCode ? `${BANK_MAP[bankCode]?.short} — ${BANK_MAP[bankCode]?.full}` : "—"}
               </div>
               <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", letterSpacing: 2, marginBottom: 4 }}>
                 {acctNumber || "—"}
@@ -735,7 +737,18 @@ export default function PaymentsPage() {
 
         <FormGrid>
           <FormItem label="ธนาคาร" full>
-            <input type="text" value={draftBank} onChange={(e) => setDraftBank(e.target.value)} />
+            <select
+              value={draftBankCode}
+              onChange={(e) => setDraftBankCode(e.target.value)}
+              style={{ padding: "6px 9px", background: "var(--bg)", border: "1.5px solid var(--bd2)", borderRadius: 7, color: "var(--t1)", fontFamily: "inherit", fontSize: 12, cursor: "pointer", outline: "none", width: "100%" }}
+            >
+              <option value="">— เลือกธนาคาร —</option>
+              {Object.entries(BANK_MAP).map(([code, info]) => (
+                <option key={code} value={code}>
+                  {info.short} — {info.full}
+                </option>
+              ))}
+            </select>
           </FormItem>
           <FormItem label="เลขบัญชี" full>
             <input
