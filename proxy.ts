@@ -32,11 +32,12 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  // Always allow static assets, API routes, auth callback
+  // Always allow static assets, API routes, auth callback, and set-password
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api") ||
     pathname.startsWith("/auth") ||
+    pathname.startsWith("/set-password") ||
     pathname.match(/\.(svg|png|jpg|jpeg|gif|webp|ico|css|js)$/)
   ) {
     return supabaseResponse;

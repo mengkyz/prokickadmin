@@ -20,9 +20,9 @@ export async function POST(request: Request) {
   // Derive origin from the incoming request so it works on both localhost and production
   const origin = new URL(request.url).origin;
 
-  // Send invite email via Supabase Auth
+  // Send invite email — after accepting, user lands on set-password page
   const { data, error: inviteError } = await adminSupabase.auth.admin.inviteUserByEmail(email, {
-    redirectTo: `${origin}/auth/callback`,
+    redirectTo: `${origin}/auth/callback?next=/set-password`,
   });
 
   if (inviteError) {
