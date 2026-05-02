@@ -17,9 +17,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "invalid role" }, { status: 400 });
   }
 
+  // Derive origin from the incoming request so it works on both localhost and production
+  const origin = new URL(request.url).origin;
+
   // Send invite email via Supabase Auth
   const { data, error: inviteError } = await adminSupabase.auth.admin.inviteUserByEmail(email, {
-    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/auth/callback`,
+    redirectTo: `${origin}/auth/callback`,
   });
 
   if (inviteError) {
