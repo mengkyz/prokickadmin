@@ -1,4 +1,4 @@
-export type PortalRole = "admin" | "coach";
+export type PortalRole = "admin" | "view_only";
 
 export interface PortalUser {
   id: string;

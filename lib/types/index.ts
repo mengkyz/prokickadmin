@@ -142,7 +142,7 @@ export interface Coach {
 }
 
 // ── Admin Account ────────────────────────────────────────
-export type AdminRole = "admin" | "coach";
+export type AdminRole = "admin" | "view_only";
 
 export interface AdminAccount {
   id: string;

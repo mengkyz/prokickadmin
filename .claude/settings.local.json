@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs wc *)",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "mcp__b20c8e28-6b99-44b2-b0bf-9ef5c19e64da__list_projects",
+      "mcp__b20c8e28-6b99-44b2-b0bf-9ef5c19e64da__execute_sql",
+      "mcp__b20c8e28-6b99-44b2-b0bf-9ef5c19e64da__apply_migration",
+      "mcp__b20c8e28-6b99-44b2-b0bf-9ef5c19e64da__get_project",
+      "Bash(gh pr create --title 'feat: email login, role-based access control & portal user management' --body ' *)",
+      "Bash(gh auth *)",
+      "Bash(gh pr *)",
+      "Bash(xargs grep *)",
+      "mcp__8cab270f-11d8-4157-aa57-0b53430e603a__list_projects",
+      "mcp__8cab270f-11d8-4157-aa57-0b53430e603a__apply_migration",
+      "Bash(git checkout *)",
+      "Bash(git merge *)",
+      "Bash(git push *)",
+      "Bash(git branch *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "mcp__b20c8e28-6b99-44b2-b0bf-9ef5c19e64da__list_tables"
+    ]
+  }
+}

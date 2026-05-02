@@ -13,7 +13,7 @@ export async function POST(request: Request) {
   if (!email || !role) {
     return NextResponse.json({ error: "email and role are required" }, { status: 400 });
   }
-  if (!["admin", "coach"].includes(role)) {
+  if (!["admin", "view_only"].includes(role)) {
     return NextResponse.json({ error: "invalid role" }, { status: 400 });
   }
   if (!password || password.length < 8) {

@@ -69,7 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         portalUser,
         isAdmin: portalUser?.role === "admin",
-        isCoach: portalUser?.role === "coach",
+        isCoach: portalUser?.role === "view_only",
         loading,
         signOut,
       }}
