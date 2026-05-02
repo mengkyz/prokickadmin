@@ -14,11 +14,13 @@ import { ExportClassesModal } from "@/components/classes/ExportClassesModal";
 import { fetchClasses, todayRange, weekRange, checkClassesDeletable, deleteClass, deleteClasses } from "@/lib/db/classes";
 import type { AdminClass } from "@/lib/db/classes";
 import { Modal } from "@/components/ui/Modal";
+import { useAuth } from "@/lib/context/AuthContext";
 
 type ModalType = "none" | "create" | "edit" | "incoming-detail" | "history-detail" | "export";
 type DateFilter = "today" | "week" | "custom";
 
 export default function ClassesPage() {
+  const { isAdmin } = useAuth();
   const [modal, setModal]           = useState<ModalType>("none");
   const [dateFilter, setDateFilter] = useState<DateFilter>("week");
   const [customFrom, setCustomFrom] = useState("");
@@ -274,18 +276,22 @@ export default function ClassesPage() {
                           <Button variant="ghost" size="sm" onClick={() => { setExportClasses(incoming.filter((c) => selectedIn.has(c.id))); setModal("export"); }}>
                             📥 Export ที่เลือก ({selectedIn.size})
                           </Button>
-                          <Button
-                            size="sm"
-                            style={{ background: "var(--red-l)", color: "var(--red)", border: "1.5px solid var(--red)", fontSize: 11 }}
-                            onClick={() => setDeleteBatchConfirm(true)}
-                          >
-                            🗑️ ลบที่เลือก ({selectedIn.size})
-                          </Button>
+                          {isAdmin && (
+                            <Button
+                              size="sm"
+                              style={{ background: "var(--red-l)", color: "var(--red)", border: "1.5px solid var(--red)", fontSize: 11 }}
+                              onClick={() => setDeleteBatchConfirm(true)}
+                            >
+                              🗑️ ลบที่เลือก ({selectedIn.size})
+                            </Button>
+                          )}
                         </>
                       )}
-                      <Button variant="primary" size="sm" onClick={() => setModal("create")}>
-                        + สร้างคลาส
-                      </Button>
+                      {isAdmin && (
+                        <Button variant="primary" size="sm" onClick={() => setModal("create")}>
+                          + สร้างคลาส
+                        </Button>
+                      )}
                     </div>
                   </div>
 
@@ -327,22 +333,26 @@ export default function ClassesPage() {
                             <td>
                               <div style={{ display: "flex", gap: 5 }}>
                                 <Button variant="ghost" size="sm" onClick={() => openIncomingDetail(cls)}>ดู/จัดการ</Button>
-                                <Button variant="ghost" size="sm" onClick={() => openEdit(cls)}>แก้ไข</Button>
-                                <Button
-                                  size="sm"
-                                  disabled={!deletableMap[cls.id]}
-                                  title={deletableMap[cls.id] ? "ลบคลาส" : "มีการจอง — ไม่สามารถลบได้"}
-                                  style={{
-                                    background: deletableMap[cls.id] ? "var(--red-l)" : "var(--bg)",
-                                    color: deletableMap[cls.id] ? "var(--red)" : "var(--tm)",
-                                    border: `1.5px solid ${deletableMap[cls.id] ? "var(--red)" : "var(--bd)"}`,
-                                    cursor: deletableMap[cls.id] ? "pointer" : "not-allowed",
-                                    fontSize: 11,
-                                  }}
-                                  onClick={() => deletableMap[cls.id] && setDeleteTarget(cls)}
-                                >
-                                  🗑️
-                                </Button>
+                                {isAdmin && (
+                                  <>
+                                    <Button variant="ghost" size="sm" onClick={() => openEdit(cls)}>แก้ไข</Button>
+                                    <Button
+                                      size="sm"
+                                      disabled={!deletableMap[cls.id]}
+                                      title={deletableMap[cls.id] ? "ลบคลาส" : "มีการจอง — ไม่สามารถลบได้"}
+                                      style={{
+                                        background: deletableMap[cls.id] ? "var(--red-l)" : "var(--bg)",
+                                        color: deletableMap[cls.id] ? "var(--red)" : "var(--tm)",
+                                        border: `1.5px solid ${deletableMap[cls.id] ? "var(--red)" : "var(--bd)"}`,
+                                        cursor: deletableMap[cls.id] ? "pointer" : "not-allowed",
+                                        fontSize: 11,
+                                      }}
+                                      onClick={() => deletableMap[cls.id] && setDeleteTarget(cls)}
+                                    >
+                                      🗑️
+                                    </Button>
+                                  </>
+                                )}
                               </div>
                             </td>
                           </tr>

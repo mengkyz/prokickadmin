@@ -3,19 +3,26 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAuth } from "@/lib/context/AuthContext";
 
-const NAV_ITEMS = [
-  { href: "/dashboard", icon: "📊", label: "Dashboard" },
-  { href: "/classes", icon: "🗓️", label: "Class & Sessions", badge: 0 },
-  { href: "/users", icon: "👥", label: "Users" },
-  { href: "/packages", icon: "📦", label: "Packages" },
-  { href: "/promo", icon: "🏷️", label: "Promo Codes" },
-  { href: "/payments", icon: "💳", label: "Payments" },
-  { href: "/settings", icon: "⚙️", label: "Settings" },
+const ALL_NAV_ITEMS = [
+  { href: "/dashboard", icon: "📊",  label: "Dashboard",       adminOnly: false },
+  { href: "/classes",   icon: "🗓️", label: "Class & Sessions", adminOnly: false, badge: 0 },
+  { href: "/users",     icon: "👥",  label: "Users",            adminOnly: false },
+  { href: "/packages",  icon: "📦",  label: "Packages",         adminOnly: false },
+  { href: "/promo",     icon: "🏷️", label: "Promo Codes",      adminOnly: true },
+  { href: "/payments",  icon: "💳",  label: "Payments",         adminOnly: false },
+  { href: "/settings",  icon: "⚙️", label: "Settings",         adminOnly: true },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { portalUser, isAdmin } = useAuth();
+
+  const navItems = ALL_NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin);
+
+  const displayName = portalUser?.display_name || portalUser?.email?.split("@")[0] || "User";
+  const initial = displayName.charAt(0).toUpperCase();
 
   return (
     <aside
@@ -59,7 +66,15 @@ export function Sidebar() {
           <div style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>
             Pro<span style={{ color: "var(--accent)" }}>Kick</span>
           </div>
-          <div style={{ fontSize: 9, color: "rgba(255,255,255,.3)", textTransform: "uppercase", letterSpacing: ".8px", marginTop: 1 }}>
+          <div
+            style={{
+              fontSize: 9,
+              color: "rgba(255,255,255,.3)",
+              textTransform: "uppercase",
+              letterSpacing: ".8px",
+              marginTop: 1,
+            }}
+          >
             Admin Portal
           </div>
         </div>
@@ -67,7 +82,7 @@ export function Sidebar() {
 
       {/* Nav */}
       <nav style={{ flex: 1, padding: 8, overflowY: "auto" }}>
-        {NAV_ITEMS.map((item) => {
+        {navItems.map((item) => {
           const isActive = pathname.startsWith(item.href);
           return (
             <Link
@@ -113,7 +128,7 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Footer — admin info */}
+      {/* Footer — current user info */}
       <div style={{ padding: 8, borderTop: "1px solid rgba(255,255,255,.07)" }}>
         <Link
           href="/profile"
@@ -132,7 +147,9 @@ export function Sidebar() {
               width: 28,
               height: 28,
               borderRadius: "50%",
-              background: "linear-gradient(135deg, var(--blue), var(--purple))",
+              background: isAdmin
+                ? "linear-gradient(135deg, var(--accent), #E8901A)"
+                : "linear-gradient(135deg, var(--blue), var(--purple))",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -142,11 +159,15 @@ export function Sidebar() {
               flexShrink: 0,
             }}
           >
-            A
+            {initial}
           </div>
           <div>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,.85)" }}>Admin</div>
-            <div style={{ fontSize: 10, color: "rgba(255,255,255,.35)" }}>Super Admin</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,.85)" }}>
+              {displayName}
+            </div>
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,.35)" }}>
+              {isAdmin ? "Admin" : "Coach"}
+            </div>
           </div>
         </Link>
       </div>
