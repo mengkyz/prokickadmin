@@ -17,6 +17,7 @@ import {
   type AdminPayment,
   type PaymentSummary,
 } from "@/lib/db/payments";
+import { useAuth } from "@/lib/context/AuthContext";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function paymentTypeLabel(type: string | null): { icon: string; label: string } {
@@ -278,6 +279,7 @@ type StatusFilter = "all" | "success" | "failed";
 
 export default function PaymentsPage() {
   const { showToast } = useToast();
+  const { isAdmin } = useAuth();
 
   // Data
   const [payments,    setPayments]    = useState<AdminPayment[]>([]);
@@ -369,7 +371,7 @@ export default function PaymentsPage() {
           <CardHeader
             icon="🏦"
             title="ข้อมูลรับชำระเงิน"
-            actions={<Button variant="primary" size="sm" onClick={() => { setDraftBank(bankName); setDraftAcct(acctNumber); setDraftName(acctName); setEditPayOpen(true); }}>✏️ แก้ไข</Button>}
+            actions={isAdmin ? <Button variant="primary" size="sm" onClick={() => { setDraftBank(bankName); setDraftAcct(acctNumber); setDraftName(acctName); setEditPayOpen(true); }}>✏️ แก้ไข</Button> : undefined}
           />
           <div style={{ padding: 14 }}>
             <div style={{ background: "linear-gradient(135deg, #009B3A, #007A2F)", borderRadius: 12, padding: 20, color: "#fff", marginBottom: 14 }}>

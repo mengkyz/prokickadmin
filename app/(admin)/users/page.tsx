@@ -10,6 +10,7 @@ import { UserChildModal } from "@/components/users/UserChildModal";
 import { ExportUsersModal } from "@/components/users/ExportUsersModal";
 import { fetchUsers } from "@/lib/db/users";
 import type { AdminUser, AdminChild } from "@/lib/db/users";
+import { useAuth } from "@/lib/context/AuthContext";
 
 type Modal = "none" | "parent" | "child" | "export";
 
@@ -30,6 +31,7 @@ function sessionsTotal(pkg: { totalSessions: number; extraSessionsPurchased: num
 }
 
 export default function UsersPage() {
+  const { isAdmin } = useAuth();
   const [modal, setModal]             = useState<Modal>("none");
   const [selected, setSelected]       = useState<Set<string>>(new Set());
   const [users, setUsers]             = useState<AdminUser[]>([]);
@@ -286,7 +288,7 @@ export default function UsersPage() {
                     <td className="pk-mono">{dispPkg?.expiryDate ?? "—"}</td>
                     <td>
                       <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); openParent(user); }}>
-                        จัดการ
+                        {isAdmin ? "จัดการ" : "ดู"}
                       </Button>
                     </td>
                   </tr>
@@ -350,7 +352,7 @@ export default function UsersPage() {
                       <td className="pk-mono">{cDispPkg?.expiryDate ?? "—"}</td>
                       <td>
                         <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); openChild(child); }}>
-                          จัดการ
+                          {isAdmin ? "จัดการ" : "ดู"}
                         </Button>
                       </td>
                     </tr>
@@ -372,6 +374,7 @@ export default function UsersPage() {
         user={editTarget}
         onSaved={() => load()}
         onOpenChild={(child) => { setChildTarget(child); setModal("child"); }}
+        isReadOnly={!isAdmin}
       />
       <UserChildModal
         key={childTarget?.id ?? "child-none"}
@@ -379,6 +382,7 @@ export default function UsersPage() {
         onClose={handleClose}
         child={childTarget}
         onSaved={() => load()}
+        isReadOnly={!isAdmin}
       />
       <ExportUsersModal open={modal === "export"} onClose={() => setModal("none")} users={users.filter((u) => selected.has(u.id))} />
     </>

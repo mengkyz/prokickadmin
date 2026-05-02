@@ -19,6 +19,7 @@ interface Props {
   onClose: () => void;
   child: AdminChild | null;
   onSaved?: () => void;
+  isReadOnly?: boolean;
 }
 
 const JERSEY_SIZES = ["XS","S","M","L","XL","XXL","3XL","4XL"];
@@ -37,7 +38,7 @@ function attLabel(s: string) {
   return "Confirmed";
 }
 
-export function UserChildModal({ open, onClose, child, onSaved }: Props) {
+export function UserChildModal({ open, onClose, child, onSaved, isReadOnly = false }: Props) {
   const { showToast } = useToast();
   const [tab, setTab] = useState(0);
   const tabs = ["ข้อมูลนักเรียน", "แพ็กเกจ", "ประวัติการจอง"];
@@ -141,7 +142,7 @@ export function UserChildModal({ open, onClose, child, onSaved }: Props) {
       }
       width={520}
       footer={
-        tab === 0
+        tab === 0 && !isReadOnly
           ? <DefaultFooter onCancel={onClose} onConfirm={handleSaveProfile} confirmLabel={savingProfile ? "กำลังบันทึก..." : "บันทึก"} />
           : <Button variant="ghost" onClick={onClose}>ปิด</Button>
       }

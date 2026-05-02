@@ -6,10 +6,12 @@ import { Button } from "@/components/ui/Button";
 import { PackageModal } from "@/components/packages/PackageModal";
 import { fetchPackages } from "@/lib/db/packages";
 import type { Package } from "@/lib/types";
+import { useAuth } from "@/lib/context/AuthContext";
 
 type Modal = "none" | "create" | "edit";
 
 export default function PackagesPage() {
+  const { isAdmin } = useAuth();
   const [packages, setPackages] = useState<Package[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<Modal>("none");
@@ -68,7 +70,7 @@ export default function PackagesPage() {
               <td className="pk-mono">{pkg.durationDays}</td>
               <td className="pk-mono">{pkg.extraEnabled ? `${pkg.extraLimit}×${pkg.extraPrice}฿` : "—"}</td>
               <td>
-                <Button variant="ghost" size="sm" onClick={() => openEdit(pkg)}>แก้ไข</Button>
+                {isAdmin && <Button variant="ghost" size="sm" onClick={() => openEdit(pkg)}>แก้ไข</Button>}
               </td>
             </tr>
           ))
@@ -92,7 +94,7 @@ export default function PackagesPage() {
           <CardHeader
             icon="📦"
             title="แพ็กเกจผู้ใหญ่"
-            actions={<Button variant="primary" size="sm" onClick={openCreate}>+ สร้างแพ็กเกจ</Button>}
+            actions={isAdmin ? <Button variant="primary" size="sm" onClick={openCreate}>+ สร้างแพ็กเกจ</Button> : undefined}
           />
           <PackageTable packages={adult} />
         </Card>
@@ -101,7 +103,7 @@ export default function PackagesPage() {
           <CardHeader
             icon="🧒"
             title="แพ็กเกจเด็ก"
-            actions={<Button variant="primary" size="sm" onClick={openCreate}>+ สร้างแพ็กเกจ</Button>}
+            actions={isAdmin ? <Button variant="primary" size="sm" onClick={openCreate}>+ สร้างแพ็กเกจ</Button> : undefined}
           />
           <PackageTable packages={junior} />
         </Card>
