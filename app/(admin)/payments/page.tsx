@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -17,7 +17,41 @@ import {
   type AdminPayment,
   type PaymentSummary,
 } from "@/lib/db/payments";
+import { fetchPaymentSettings, savePaymentSettings } from "@/lib/db/payment-settings";
 import { useAuth } from "@/lib/context/AuthContext";
+
+// ── Image compression via Canvas API ─────────────────────────────────────────
+async function compressImageToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX_DIM = 400;
+      const scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, w, h);
+      // Try decreasing quality until the data URL is under ~200 KB
+      const qualities = [0.9, 0.7, 0.5, 0.3];
+      let result = "";
+      for (const q of qualities) {
+        result = canvas.toDataURL("image/jpeg", q);
+        if (result.length < 270000) break;
+      }
+      resolve(result);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("โหลดรูปภาพไม่สำเร็จ"));
+    };
+    img.src = url;
+  });
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function paymentTypeLabel(type: string | null): { icon: string; label: string } {
@@ -99,7 +133,6 @@ function SlipDetailModal({ payment, onClose }: { payment: AdminPayment | null; o
         display: "flex", flexDirection: "column", alignItems: "center",
         padding: "12px 0 14px", borderBottom: "1px solid var(--bd)", marginBottom: 14,
       }}>
-        {/* Promo: show original struck-through above */}
         {payment.promoCode && payment.originalAmount != null && payment.originalAmount !== payment.amount && (
           <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--tm)", textDecoration: "line-through", marginBottom: 2 }}>
             {payment.originalAmount.toLocaleString()} ฿
@@ -111,7 +144,6 @@ function SlipDetailModal({ payment, onClose }: { payment: AdminPayment | null; o
             {payment.amount != null ? `${payment.amount.toLocaleString()} ฿` : "— ฿"}
           </div>
         </div>
-        {/* Promo badge */}
         {payment.promoCode && (
           <div style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 5, background: "var(--purple-l)", border: "1px solid #DDD6FE", borderRadius: 6, padding: "3px 9px" }}>
             <span style={{ fontSize: 10, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--purple)" }}>{payment.promoCode}</span>
@@ -123,7 +155,6 @@ function SlipDetailModal({ payment, onClose }: { payment: AdminPayment | null; o
             )}
           </div>
         )}
-        {/* Mismatch warning (no promo but amounts differ) */}
         {!payment.promoCode && payment.expectedAmount != null && payment.expectedAmount !== payment.amount && (
           <div style={{ marginTop: 6, fontSize: 10, color: "var(--tm)" }}>
             ยอดที่คาดหวัง: {payment.expectedAmount.toLocaleString()} ฿
@@ -139,7 +170,6 @@ function SlipDetailModal({ payment, onClose }: { payment: AdminPayment | null; o
           background: "var(--bg)", border: "1.5px solid var(--bd)",
           display: "flex", flexDirection: "column", gap: 7,
         }}>
-          {/* Type + product name */}
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 18 }}>{ptLabel.icon}</span>
             <div>
@@ -150,7 +180,6 @@ function SlipDetailModal({ payment, onClose }: { payment: AdminPayment | null; o
                     ? `${payment.packageName}${payment.packageType ? ` (${packageTypeLabel(payment.packageType)})` : ""}`
                     : ptLabel.label}
               </div>
-              {/* For extra_session: show which package it belongs to */}
               {payment.paymentType === "extra_session" && payment.packageName && (
                 <div style={{ fontSize: 10, color: "var(--purple)", fontWeight: 600, marginTop: 1 }}>
                   แพ็กเกจ: {payment.packageName}{payment.packageType ? ` (${packageTypeLabel(payment.packageType)})` : ""}
@@ -165,12 +194,8 @@ function SlipDetailModal({ payment, onClose }: { payment: AdminPayment | null; o
             </div>
           </div>
 
-          {/* Package owner — who this package / extra session is for */}
           {payment.childName ? (
-            <div style={{
-              display: "flex", alignItems: "center", gap: 8,
-              paddingTop: 7, borderTop: "1px dashed var(--bd)",
-            }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 7, borderTop: "1px dashed var(--bd)" }}>
               <span style={{ fontSize: 15 }}>👶</span>
               <div>
                 <div style={{ fontSize: 10, color: "var(--tm)" }}>เจ้าของแพ็กเกจ</div>
@@ -178,10 +203,7 @@ function SlipDetailModal({ payment, onClose }: { payment: AdminPayment | null; o
               </div>
             </div>
           ) : payment.userName ? (
-            <div style={{
-              display: "flex", alignItems: "center", gap: 8,
-              paddingTop: 7, borderTop: "1px dashed var(--bd)",
-            }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 7, borderTop: "1px dashed var(--bd)" }}>
               <div style={{
                 width: 26, height: 26, borderRadius: "50%",
                 background: payment.avatarColor, flexShrink: 0,
@@ -197,12 +219,8 @@ function SlipDetailModal({ payment, onClose }: { payment: AdminPayment | null; o
             </div>
           ) : null}
 
-          {/* Buyer (only shown separately when buying for a child) */}
           {payment.childName && payment.userName && (
-            <div style={{
-              display: "flex", alignItems: "center", gap: 8,
-              paddingTop: 7, borderTop: "1px dashed var(--bd)",
-            }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 7, borderTop: "1px dashed var(--bd)" }}>
               <div style={{
                 width: 26, height: 26, borderRadius: "50%",
                 background: payment.avatarColor, flexShrink: 0,
@@ -225,7 +243,6 @@ function SlipDetailModal({ payment, onClose }: { payment: AdminPayment | null; o
       <div style={{ marginBottom: 14 }}>
         <SectionLabel>การโอนเงิน</SectionLabel>
         <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 8, alignItems: "center" }}>
-          {/* Sender */}
           <div style={{ padding: "9px 10px", background: "var(--bg)", borderRadius: 8, border: "1.5px solid var(--bd)" }}>
             <div style={{ fontSize: 9, color: "var(--tm)", marginBottom: 4 }}>ผู้โอน</div>
             <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 3 }}>
@@ -237,7 +254,6 @@ function SlipDetailModal({ payment, onClose }: { payment: AdminPayment | null; o
             {payment.senderAccount && <div style={{ fontSize: 10, color: "var(--tm)", fontFamily: "'JetBrains Mono', monospace" }}>{payment.senderAccount}</div>}
           </div>
           <div style={{ fontSize: 16, color: "var(--tm)", textAlign: "center" }}>→</div>
-          {/* Receiver */}
           <div style={{ padding: "9px 10px", background: "var(--bg)", borderRadius: 8, border: "1.5px solid var(--bd)" }}>
             <div style={{ fontSize: 9, color: "var(--tm)", marginBottom: 4 }}>ผู้รับ</div>
             <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 3 }}>
@@ -262,7 +278,6 @@ function SlipDetailModal({ payment, onClose }: { payment: AdminPayment | null; o
         <InfoRow label="Ref 3" value={payment.ref3} />
       </div>
 
-      {/* ── Note ── */}
       {payment.note && (
         <div style={{ padding: "9px 12px", background: "var(--bg)", borderRadius: 8, border: "1.5px solid var(--bd)" }}>
           <div style={{ fontSize: 9, color: "var(--tm)", marginBottom: 3, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>หมายเหตุ</div>
@@ -279,7 +294,7 @@ type StatusFilter = "all" | "success" | "failed";
 
 export default function PaymentsPage() {
   const { showToast } = useToast();
-  const { isAdmin } = useAuth();
+  const { isAdmin, portalUser } = useAuth();
 
   // Data
   const [payments,    setPayments]    = useState<AdminPayment[]>([]);
@@ -293,19 +308,42 @@ export default function PaymentsPage() {
   const [customTo,     setCustomTo]     = useState("");
   const [search,       setSearch]       = useState("");
 
-  // Modals
-  const [detailPay,    setDetailPay]    = useState<AdminPayment | null>(null);
-  const [editPayOpen,  setEditPayOpen]  = useState(false);
-  const [bankName,     setBankName]     = useState("ธนาคารกสิกรไทย (KBank)");
-  const [acctNumber,   setAcctNumber]   = useState("012-3-45678-9");
-  const [acctName,     setAcctName]     = useState("บจก. โปรคิก อะคาเดมี่");
-  const [acctError,    setAcctError]    = useState("");
-  // Draft values while modal is open
-  const [draftBank,    setDraftBank]    = useState(bankName);
-  const [draftAcct,    setDraftAcct]    = useState(acctNumber);
-  const [draftName,    setDraftName]    = useState(acctName);
+  // Payment settings (loaded from DB)
+  const [bankName,     setBankName]     = useState("");
+  const [acctNumber,   setAcctNumber]   = useState("");
+  const [acctName,     setAcctName]     = useState("");
+  const [qrCodeBase64, setQrCodeBase64] = useState<string | null>(null);
 
-  // ── Loader ──────────────────────────────────────────────
+  // Edit modal state
+  const [editPayOpen,  setEditPayOpen]  = useState(false);
+  const [draftBank,    setDraftBank]    = useState("");
+  const [draftAcct,    setDraftAcct]    = useState("");
+  const [draftName,    setDraftName]    = useState("");
+  const [draftQr,      setDraftQr]      = useState<string | null>(null);
+  const [acctError,    setAcctError]    = useState("");
+  const [isSaving,     setIsSaving]     = useState(false);
+
+  // Slip detail modal
+  const [detailPay,    setDetailPay]    = useState<AdminPayment | null>(null);
+
+  // Hidden file input for QR upload
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Load payment settings once on mount ─────────────────
+  useEffect(() => {
+    fetchPaymentSettings()
+      .then((s) => {
+        if (s) {
+          setBankName(s.bankName ?? "");
+          setAcctNumber(s.accountNumber ?? "");
+          setAcctName(s.accountName ?? "");
+          setQrCodeBase64(s.qrCodeBase64 ?? null);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // ── Load payments + summary ──────────────────────────────
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -317,7 +355,6 @@ export default function PaymentsPage() {
         range = { from: new Date(customFrom).toISOString(), to: new Date(`${customTo}T23:59:59`).toISOString() };
       }
 
-      // Use allSettled so a summary error never blocks the payments list
       const [paysResult, sumResult] = await Promise.allSettled([
         fetchPayments({
           from: range?.from,
@@ -332,7 +369,6 @@ export default function PaymentsPage() {
       else showToast((paysResult.reason as Error).message, "error");
 
       if (sumResult.status === "fulfilled") setSummary(sumResult.value);
-      // Summary failure is non-fatal — keep showing zeroes from useState init
     } catch (err) {
       showToast((err as Error).message, "error");
     } finally {
@@ -342,7 +378,7 @@ export default function PaymentsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // ── Client-side search ──────────────────────────────────
+  // ── Client-side search ───────────────────────────────────
   const filtered = search.trim()
     ? payments.filter((p) => {
         const q = search.toLowerCase();
@@ -355,7 +391,41 @@ export default function PaymentsPage() {
       })
     : payments;
 
-  // ── Styles ──────────────────────────────────────────────
+  // ── Save handler ─────────────────────────────────────────
+  async function handleSavePaymentSettings() {
+    const digits = draftAcct.replace(/-/g, "");
+    if (digits.length !== 10) {
+      setAcctError("กรุณากรอกเลขบัญชีให้ครบ 10 หลัก");
+      return;
+    }
+    if (!portalUser) return;
+    setIsSaving(true);
+    try {
+      await savePaymentSettings(
+        {
+          bankName:      draftBank,
+          bankCode:      null,
+          accountNumber: draftAcct,
+          accountName:   draftName,
+          qrCodeBase64:  draftQr,
+        },
+        portalUser.id
+      );
+      setBankName(draftBank);
+      setAcctNumber(draftAcct);
+      setAcctName(draftName);
+      setQrCodeBase64(draftQr);
+      setAcctError("");
+      setEditPayOpen(false);
+      showToast("บันทึกแล้ว");
+    } catch (err) {
+      showToast((err as Error).message, "error");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  // ── Styles ───────────────────────────────────────────────
   const selStyle: React.CSSProperties = {
     padding: "5px 9px", background: "var(--bg)", border: "1.5px solid var(--bd2)",
     borderRadius: 6, color: "var(--t1)", fontFamily: "inherit", fontSize: 11,
@@ -371,18 +441,48 @@ export default function PaymentsPage() {
           <CardHeader
             icon="🏦"
             title="ข้อมูลรับชำระเงิน"
-            actions={isAdmin ? <Button variant="primary" size="sm" onClick={() => { setDraftBank(bankName); setDraftAcct(acctNumber); setDraftName(acctName); setEditPayOpen(true); }}>✏️ แก้ไข</Button> : undefined}
+            actions={isAdmin ? (
+              <Button variant="primary" size="sm" onClick={() => {
+                setDraftBank(bankName);
+                setDraftAcct(acctNumber);
+                setDraftName(acctName);
+                setDraftQr(qrCodeBase64);
+                setAcctError("");
+                setEditPayOpen(true);
+              }}>✏️ แก้ไข</Button>
+            ) : undefined}
           />
           <div style={{ padding: 14 }}>
             <div style={{ background: "linear-gradient(135deg, #009B3A, #007A2F)", borderRadius: 12, padding: 20, color: "#fff", marginBottom: 14 }}>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,.65)", marginBottom: 3, fontWeight: 600, letterSpacing: 0.5 }}>{bankName}</div>
-              <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", letterSpacing: 2, marginBottom: 4 }}>{acctNumber}</div>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{acctName}</div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,.65)", marginBottom: 3, fontWeight: 600, letterSpacing: 0.5 }}>
+                {bankName || "—"}
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", letterSpacing: 2, marginBottom: 4 }}>
+                {acctNumber || "—"}
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{acctName || "—"}</div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ width: 80, height: 80, background: "var(--bg)", borderRadius: 10, border: "1.5px solid var(--bd)", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 4 }}>
-                <div style={{ fontSize: 20 }}>📱</div>
-                <div style={{ fontSize: 9, color: "var(--tm)", textAlign: "center", lineHeight: 1.3 }}>QR<br/>PromptPay</div>
+              {/* QR code display */}
+              <div style={{
+                width: 80, height: 80,
+                background: "var(--bg)", borderRadius: 10,
+                border: "1.5px solid var(--bd)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                flexDirection: "column", gap: 4, overflow: "hidden", flexShrink: 0,
+              }}>
+                {qrCodeBase64 ? (
+                  <img
+                    src={qrCodeBase64}
+                    alt="QR PromptPay"
+                    style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                  />
+                ) : (
+                  <>
+                    <div style={{ fontSize: 20 }}>📱</div>
+                    <div style={{ fontSize: 9, color: "var(--tm)", textAlign: "center", lineHeight: 1.3 }}>QR<br/>PromptPay</div>
+                  </>
+                )}
               </div>
               <div>
                 <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 3 }}>สแกน QR พร้อมเพย์</div>
@@ -493,12 +593,9 @@ export default function PaymentsPage() {
                 const displayName = pay.userName ?? pay.senderName ?? "—";
                 return (
                   <tr key={pay.id}>
-                    {/* Date */}
                     <td className="pk-mono" style={{ fontSize: 11, color: "var(--tm)", whiteSpace: "nowrap" }}>
                       {pay.displayDate !== "—" ? pay.displayDate : pay.displayCreated}
                     </td>
-
-                    {/* Sender */}
                     <td>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <div style={{ width: 28, height: 28, borderRadius: "50%", background: pay.avatarColor, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
@@ -512,8 +609,6 @@ export default function PaymentsPage() {
                         </div>
                       </div>
                     </td>
-
-                    {/* Bank */}
                     <td>
                       <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                         <div style={{ width: 7, height: 7, borderRadius: "50%", background: sending.color, flexShrink: 0 }} />
@@ -523,8 +618,6 @@ export default function PaymentsPage() {
                         <span style={{ fontSize: 11, fontWeight: 700 }}>{bankInfo(pay.receivingBank).short}</span>
                       </div>
                     </td>
-
-                    {/* Product */}
                     <td style={{ maxWidth: 150 }}>
                       {pay.paymentType === "extra_session" ? (
                         <div>
@@ -564,8 +657,6 @@ export default function PaymentsPage() {
                         <div style={{ fontSize: 10, color: "var(--tm)", marginTop: 1 }}>👤 {pay.userName}</div>
                       ) : null}
                     </td>
-
-                    {/* Amount — with promo strikethrough tooltip */}
                     <td className="pk-mono">
                       {pay.promoCode && pay.originalAmount != null && pay.originalAmount !== pay.amount ? (
                         <div title={promoDiscountLabel(pay)}>
@@ -585,8 +676,6 @@ export default function PaymentsPage() {
                         </span>
                       )}
                     </td>
-
-                    {/* Status */}
                     <td>
                       {pay.slipokSuccess ? (
                         <Badge variant="green">✅ สำเร็จ</Badge>
@@ -594,8 +683,6 @@ export default function PaymentsPage() {
                         <Badge variant="red">❌ ล้มเหลว</Badge>
                       )}
                     </td>
-
-                    {/* Detail */}
                     <td>
                       <Button variant="ghost" size="sm" onClick={() => setDetailPay(pay)}>🧾 ดู</Button>
                     </td>
@@ -617,24 +704,35 @@ export default function PaymentsPage() {
         title="✏️ แก้ไขข้อมูลรับชำระเงิน"
         width={480}
         footer={
-          <DefaultFooter
-            onCancel={() => { setEditPayOpen(false); setAcctError(""); }}
-            onConfirm={() => {
-              const digits = draftAcct.replace(/-/g, "");
-              if (digits.length !== 10) {
-                setAcctError("กรุณากรอกเลขบัญชีให้ครบ 10 หลัก");
-                return;
-              }
-              setBankName(draftBank);
-              setAcctNumber(draftAcct);
-              setAcctName(draftName);
-              setAcctError("");
-              setEditPayOpen(false);
-              showToast("บันทึกแล้ว");
-            }}
-          />
+          <>
+            <Button variant="ghost" onClick={() => { setEditPayOpen(false); setAcctError(""); }} disabled={isSaving}>
+              ยกเลิก
+            </Button>
+            <Button variant="primary" onClick={handleSavePaymentSettings} disabled={isSaving}>
+              {isSaving ? "กำลังบันทึก…" : "บันทึก"}
+            </Button>
+          </>
         }
       >
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg"
+          style={{ display: "none" }}
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            try {
+              const base64 = await compressImageToBase64(file);
+              setDraftQr(base64);
+            } catch {
+              showToast("โหลดรูปภาพไม่สำเร็จ", "error");
+            }
+            e.target.value = "";
+          }}
+        />
+
         <FormGrid>
           <FormItem label="ธนาคาร" full>
             <input type="text" value={draftBank} onChange={(e) => setDraftBank(e.target.value)} />
@@ -666,8 +764,42 @@ export default function PaymentsPage() {
           </FormItem>
           <FormItem label="QR Code PromptPay" full>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 80, height: 80, background: "var(--bg)", border: "1.5px dashed var(--bd2)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "var(--tm)", cursor: "pointer" }}>📷 อัปโหลด</div>
-              <div style={{ fontSize: 10, color: "var(--tm)" }}>รองรับ PNG, JPG<br />ขนาดไม่เกิน 2MB</div>
+              {/* Clickable QR preview / upload button */}
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                style={{
+                  width: 80, height: 80,
+                  background: "var(--bg)",
+                  border: draftQr ? "1.5px solid var(--bd)" : "1.5px dashed var(--bd2)",
+                  borderRadius: 8,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  cursor: "pointer", overflow: "hidden", flexShrink: 0,
+                }}
+              >
+                {draftQr ? (
+                  <img
+                    src={draftQr}
+                    alt="QR preview"
+                    style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                  />
+                ) : (
+                  <span style={{ fontSize: 10, color: "var(--tm)", textAlign: "center", lineHeight: 1.4 }}>
+                    📷<br />อัปโหลด
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 10, color: "var(--tm)", lineHeight: 1.7 }}>
+                รองรับ PNG, JPG<br />
+                ปรับขนาดอัตโนมัติ<br />
+                {draftQr && (
+                  <span
+                    onClick={() => setDraftQr(null)}
+                    style={{ color: "var(--red)", cursor: "pointer", textDecoration: "underline" }}
+                  >
+                    ลบ QR Code
+                  </span>
+                )}
+              </div>
             </div>
           </FormItem>
         </FormGrid>
