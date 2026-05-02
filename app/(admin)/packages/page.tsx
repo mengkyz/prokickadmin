@@ -3,8 +3,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
 import { PackageModal } from "@/components/packages/PackageModal";
-import { fetchPackages } from "@/lib/db/packages";
+import { fetchPackages, checkPackageTemplateDeletable } from "@/lib/db/packages";
 import type { Package } from "@/lib/types";
 import { useAuth } from "@/lib/context/AuthContext";
 
@@ -12,16 +13,22 @@ type Modal = "none" | "create" | "edit";
 
 export default function PackagesPage() {
   const { isAdmin } = useAuth();
-  const [packages, setPackages] = useState<Package[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState<Modal>("none");
-  const [editTarget, setEditTarget] = useState<Package | undefined>();
+  const [packages, setPackages]             = useState<Package[]>([]);
+  const [loading, setLoading]               = useState(true);
+  const [modal, setModal]                   = useState<Modal>("none");
+  const [editTarget, setEditTarget]         = useState<Package | undefined>();
+  const [deletableMap, setDeletableMap]     = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const data = await fetchPackages();
       setPackages(data);
+      // Check deletability for all packages in parallel
+      const results = await Promise.all(
+        data.map((p) => checkPackageTemplateDeletable(p.id).then((ok) => [p.id, ok] as [string, boolean]))
+      );
+      setDeletableMap(Object.fromEntries(results));
     } finally {
       setLoading(false);
     }
@@ -39,7 +46,7 @@ export default function PackagesPage() {
     setModal("create");
   }
 
-  const adult = packages.filter((p) => p.category === "Adult");
+  const adult  = packages.filter((p) => p.category === "Adult");
   const junior = packages.filter((p) => p.category === "Junior");
 
   const PackageTable = ({ packages: pkgs }: { packages: Package[] }) => (
@@ -51,26 +58,39 @@ export default function PackagesPage() {
           <th>Sessions</th>
           <th>วัน</th>
           <th>Extra</th>
+          <th>สถานะ</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
         {pkgs.length === 0 ? (
           <tr>
-            <td colSpan={6} style={{ textAlign: "center", color: "var(--t3)", padding: "20px 0", fontSize: 13 }}>
+            <td colSpan={7} style={{ textAlign: "center", color: "var(--t3)", padding: "20px 0", fontSize: 13 }}>
               ยังไม่มีแพ็กเกจ
             </td>
           </tr>
         ) : (
           pkgs.map((pkg) => (
             <tr key={pkg.id}>
-              <td><div style={{ fontSize: 12, fontWeight: 600 }}>{pkg.name}</div></td>
+              <td>
+                <div style={{ fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+                  {pkg.name}
+                </div>
+              </td>
               <td className="pk-mono" style={{ color: "var(--orange)" }}>{pkg.price.toLocaleString()} ฿</td>
               <td className="pk-mono">{pkg.sessions}</td>
               <td className="pk-mono">{pkg.durationDays}</td>
               <td className="pk-mono">{pkg.extraEnabled ? `${pkg.extraLimit}×${pkg.extraPrice}฿` : "—"}</td>
               <td>
-                {isAdmin && <Button variant="ghost" size="sm" onClick={() => openEdit(pkg)}>แก้ไข</Button>}
+                {pkg.isActive
+                  ? <Badge variant="green">Active</Badge>
+                  : <Badge variant="red">Inactive</Badge>
+                }
+              </td>
+              <td>
+                {isAdmin && (
+                  <Button variant="ghost" size="sm" onClick={() => openEdit(pkg)}>แก้ไข</Button>
+                )}
               </td>
             </tr>
           ))
@@ -121,6 +141,7 @@ export default function PackagesPage() {
         onClose={() => setModal("none")}
         mode="edit"
         initial={editTarget}
+        isDeletable={editTarget ? (deletableMap[editTarget.id] ?? false) : false}
         onSuccess={load}
       />
     </>

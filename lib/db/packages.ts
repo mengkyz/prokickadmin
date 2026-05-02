@@ -12,6 +12,7 @@ interface PackageTemplateRow {
   extra_session_enabled: boolean;
   extra_session_limit: number;
   extra_session_price: number;
+  is_active: boolean;
 }
 
 function rowToPackage(row: PackageTemplateRow): Package {
@@ -27,10 +28,11 @@ function rowToPackage(row: PackageTemplateRow): Package {
     extraEnabled: row.extra_session_enabled,
     extraLimit: row.extra_session_limit,
     extraPrice: row.extra_session_price,
+    isActive: row.is_active,
   };
 }
 
-function packageToRow(pkg: Omit<Package, "id">) {
+function packageToRow(pkg: Omit<Package, "id" | "isActive">) {
   return {
     name: pkg.name,
     type: pkg.category.toLowerCase() as "adult" | "junior",
@@ -56,7 +58,7 @@ export async function fetchPackages(): Promise<Package[]> {
 }
 
 // ── CREATE ───────────────────────────────────────────────
-export async function createPackage(pkg: Omit<Package, "id">): Promise<Package> {
+export async function createPackage(pkg: Omit<Package, "id" | "isActive">): Promise<Package> {
   const { data, error } = await getSupabaseClient()
     .from("package_templates")
     .insert(packageToRow(pkg))
@@ -68,7 +70,7 @@ export async function createPackage(pkg: Omit<Package, "id">): Promise<Package> 
 }
 
 // ── UPDATE ───────────────────────────────────────────────
-export async function updatePackage(id: string, pkg: Omit<Package, "id">): Promise<Package> {
+export async function updatePackage(id: string, pkg: Omit<Package, "id" | "isActive">): Promise<Package> {
   const { data, error } = await getSupabaseClient()
     .from("package_templates")
     .update(packageToRow(pkg))
@@ -80,8 +82,35 @@ export async function updatePackage(id: string, pkg: Omit<Package, "id">): Promi
   return rowToPackage(data as PackageTemplateRow);
 }
 
-// ── DELETE ───────────────────────────────────────────────
+// ── TOGGLE ACTIVE ─────────────────────────────────────────
+export async function togglePackageActive(id: string, isActive: boolean): Promise<void> {
+  const { error } = await getSupabaseClient()
+    .from("package_templates")
+    .update({ is_active: isActive })
+    .eq("id", Number(id));
+
+  if (error) throw new Error(error.message);
+}
+
+// ── CHECK DELETABLE ───────────────────────────────────────
+// A package template is deletable only if no user_packages reference it
+export async function checkPackageTemplateDeletable(id: string): Promise<boolean> {
+  const { count, error } = await getSupabaseClient()
+    .from("user_packages")
+    .select("id", { count: "exact", head: true })
+    .eq("template_id", Number(id));
+
+  if (error) throw new Error(error.message);
+  return (count ?? 0) === 0;
+}
+
+// ── DELETE ────────────────────────────────────────────────
 export async function deletePackage(id: string): Promise<void> {
+  const deletable = await checkPackageTemplateDeletable(id);
+  if (!deletable) {
+    throw new Error("ไม่สามารถลบได้: มีผู้ใช้ที่ใช้แพ็กเกจนี้อยู่ ให้ปิดใช้งานแทน");
+  }
+
   const { error } = await getSupabaseClient()
     .from("package_templates")
     .delete()

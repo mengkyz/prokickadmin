@@ -48,6 +48,7 @@ export interface Package {
   extraEnabled: boolean;
   extraLimit: number;
   extraPrice: number;
+  isActive: boolean;
 }
 
 export interface PackageAssignment {

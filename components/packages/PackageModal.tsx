@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState } from "react";
-import { Modal, FormGrid, FormItem, FormSection, DefaultFooter } from "@/components/ui/Modal";
+import { Modal, FormGrid, FormItem, FormSection } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
 import { useToast } from "@/lib/context/ToastContext";
-import { createPackage, updatePackage, deletePackage } from "@/lib/db/packages";
+import { createPackage, updatePackage, deletePackage, togglePackageActive } from "@/lib/db/packages";
 import type { Package, PackageCategory } from "@/lib/types";
 
 interface PackageModalProps {
@@ -11,10 +12,11 @@ interface PackageModalProps {
   onClose: () => void;
   mode: "create" | "edit";
   initial?: Package;
+  isDeletable?: boolean;
   onSuccess?: () => void;
 }
 
-export function PackageModal({ open, onClose, mode, initial, onSuccess }: PackageModalProps) {
+export function PackageModal({ open, onClose, mode, initial, isDeletable = false, onSuccess }: PackageModalProps) {
   const { showToast } = useToast();
   const [loading, setLoading] = useState(false);
 
@@ -58,7 +60,7 @@ export function PackageModal({ open, onClose, mode, initial, onSuccess }: Packag
       onSuccess?.();
       onClose();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
+      showToast(err instanceof Error ? err.message : "เกิดข้อผิดพลาด", "error");
     } finally {
       setLoading(false);
     }
@@ -73,12 +75,28 @@ export function PackageModal({ open, onClose, mode, initial, onSuccess }: Packag
       onSuccess?.();
       onClose();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
+      showToast(err instanceof Error ? err.message : "เกิดข้อผิดพลาด", "error");
     } finally {
       setLoading(false);
     }
   }
 
+  async function handleToggleActive() {
+    if (!initial) return;
+    setLoading(true);
+    try {
+      await togglePackageActive(initial.id, !initial.isActive);
+      showToast(initial.isActive ? "ปิดใช้งานแพ็กเกจแล้ว" : "เปิดใช้งานแพ็กเกจแล้ว");
+      onSuccess?.();
+      onClose();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "เกิดข้อผิดพลาด", "error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const isEdit = mode === "edit" && !!initial;
   const title = mode === "create" ? "📦 สร้างแพ็กเกจใหม่" : `✏️ แก้ไขแพ็กเกจ — ${initial?.name ?? ""}`;
 
   return (
@@ -88,23 +106,65 @@ export function PackageModal({ open, onClose, mode, initial, onSuccess }: Packag
       title={title}
       width={480}
       footer={
-        <DefaultFooter
-          onCancel={onClose}
-          onConfirm={handleConfirm}
-          confirmLabel={loading ? "กำลังบันทึก..." : mode === "create" ? "สร้าง" : "บันทึก"}
-          extra={
-            mode === "edit" && initial ? (
+        <div style={{ display: "flex", width: "100%", alignItems: "center", gap: 8 }}>
+          {/* Left side — destructive actions (edit only) */}
+          {isEdit && (
+            <div style={{ display: "flex", gap: 6, marginRight: "auto" }}>
+              {/* Delete — only enabled when no user_packages reference this template */}
+              <div style={{ position: "relative" }} title={!isDeletable ? "ไม่สามารถลบได้: มีผู้ใช้ที่ใช้แพ็กเกจนี้อยู่" : ""}>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={loading || !isDeletable}
+                  style={{
+                    background: isDeletable ? "var(--red, #ef4444)" : "var(--bd2, #e5e7eb)",
+                    color: isDeletable ? "#fff" : "var(--tm, #9ca3af)",
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "6px 14px",
+                    cursor: isDeletable && !loading ? "pointer" : "not-allowed",
+                    fontSize: 13,
+                    fontFamily: "inherit",
+                    fontWeight: 600,
+                    transition: "background 0.15s",
+                  }}
+                >
+                  ลบ
+                </button>
+              </div>
+
+              {/* Inactive / Active toggle */}
               <button
                 type="button"
-                onClick={handleDelete}
+                onClick={handleToggleActive}
                 disabled={loading}
-                style={{ background: "var(--red, #ef4444)", color: "#fff", border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 13, marginRight: "auto" }}
+                style={{
+                  background: initial.isActive ? "var(--orange, #f97316)" : "var(--green, #22c55e)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "6px 14px",
+                  cursor: loading ? "not-allowed" : "pointer",
+                  fontSize: 13,
+                  fontFamily: "inherit",
+                  fontWeight: 600,
+                  transition: "opacity 0.15s",
+                  opacity: loading ? 0.6 : 1,
+                }}
               >
-                ลบ
+                {initial.isActive ? "ปิดใช้งาน" : "เปิดใช้งาน"}
               </button>
-            ) : undefined
-          }
-        />
+            </div>
+          )}
+
+          {/* Right side — cancel / save */}
+          <div style={{ display: "flex", gap: 8, marginLeft: isEdit ? 0 : "auto" }}>
+            <Button variant="ghost" onClick={onClose} disabled={loading}>ยกเลิก</Button>
+            <Button variant="primary" onClick={handleConfirm} disabled={loading}>
+              {loading ? "กำลังบันทึก..." : mode === "create" ? "สร้าง" : "บันทึก"}
+            </Button>
+          </div>
+        </div>
       }
     >
       <FormGrid>
