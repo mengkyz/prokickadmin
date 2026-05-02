@@ -31,6 +31,8 @@ export default function ProfilePage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
   const [inviteRole, setInviteRole] = useState<"admin" | "coach">("coach");
+  const [invitePassword, setInvitePassword] = useState("");
+  const [inviteConfirmPassword, setInviteConfirmPassword] = useState("");
   const [inviting, setInviting] = useState(false);
 
   useEffect(() => {
@@ -91,6 +93,18 @@ export default function ProfilePage() {
   }
 
   async function handleInvite() {
+    if (!inviteEmail) {
+      showToast("กรุณากรอกอีเมล", "error");
+      return;
+    }
+    if (!invitePassword || invitePassword.length < 8) {
+      showToast("รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร", "error");
+      return;
+    }
+    if (invitePassword !== inviteConfirmPassword) {
+      showToast("รหัสผ่านไม่ตรงกัน", "error");
+      return;
+    }
     setInviting(true);
     const res = await fetch("/api/portal-users/invite", {
       method: "POST",
@@ -100,6 +114,7 @@ export default function ProfilePage() {
         display_name: inviteName || null,
         role: inviteRole,
         invited_by: portalUser?.id,
+        password: invitePassword,
       }),
     });
     const json = await res.json();
@@ -107,11 +122,13 @@ export default function ProfilePage() {
     if (!res.ok) {
       showToast("เกิดข้อผิดพลาด: " + json.error, "error");
     } else {
-      showToast("ส่งคำเชิญแล้ว · " + inviteEmail);
+      showToast("สร้างบัญชีแล้ว · " + inviteEmail);
       setInviteOpen(false);
       setInviteEmail("");
       setInviteName("");
       setInviteRole("coach");
+      setInvitePassword("");
+      setInviteConfirmPassword("");
       loadPortalUsers();
     }
   }
@@ -262,7 +279,7 @@ export default function ProfilePage() {
               title="บัญชีผู้ใช้ระบบ (Portal Users)"
               actions={
                 <Button variant="primary" size="sm" onClick={() => setInviteOpen(true)}>
-                  + เชิญผู้ใช้ใหม่
+                  + เพิ่มผู้ใช้ใหม่
                 </Button>
               }
             />
@@ -372,14 +389,21 @@ export default function ProfilePage() {
       {/* ── Invite Modal ─────────────────────────────────────── */}
       <Modal
         open={inviteOpen}
-        onClose={() => setInviteOpen(false)}
-        title="👥 เชิญผู้ใช้ระบบใหม่"
+        onClose={() => {
+          setInviteOpen(false);
+          setInviteEmail("");
+          setInviteName("");
+          setInviteRole("coach");
+          setInvitePassword("");
+          setInviteConfirmPassword("");
+        }}
+        title="👥 เพิ่มผู้ใช้ระบบใหม่"
         width={440}
         footer={
           <DefaultFooter
             onCancel={() => setInviteOpen(false)}
             onConfirm={handleInvite}
-            confirmLabel={inviting ? "กำลังส่งคำเชิญ..." : "ส่งคำเชิญ"}
+            confirmLabel={inviting ? "กำลังสร้างบัญชี..." : "สร้างบัญชี"}
           />
         }
       >
@@ -409,9 +433,25 @@ export default function ProfilePage() {
               <option value="admin">🔑 Admin — จัดการทุกอย่าง</option>
             </select>
           </FormItem>
+          <FormItem label="รหัสผ่านเริ่มต้น">
+            <input
+              type="password"
+              value={invitePassword}
+              onChange={(e) => setInvitePassword(e.target.value)}
+              placeholder="อย่างน้อย 8 ตัวอักษร"
+            />
+          </FormItem>
+          <FormItem label="ยืนยันรหัสผ่าน">
+            <input
+              type="password"
+              value={inviteConfirmPassword}
+              onChange={(e) => setInviteConfirmPassword(e.target.value)}
+              placeholder="กรอกซ้ำรหัสผ่าน"
+            />
+          </FormItem>
         </FormGrid>
         <div style={{ marginTop: 10, padding: "10px 12px", background: "var(--bg)", borderRadius: 8, fontSize: 11, color: "var(--tm)", border: "1px solid var(--bd)" }}>
-          📧 ระบบจะส่งอีเมลคำเชิญไปยังที่อยู่นี้ ผู้ใช้สามารถตั้งรหัสผ่านได้เองผ่านลิงก์ในอีเมล
+          🔑 บัญชีจะถูกสร้างทันที ผู้ใช้สามารถเข้าสู่ระบบด้วยอีเมลและรหัสผ่านที่ตั้งไว้ได้เลย
         </div>
       </Modal>
     </>
