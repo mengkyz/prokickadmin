@@ -39,10 +39,11 @@ function PageAccessCell({
         title="คลิกเพื่อแก้ไขสิทธิ์หน้า"
         style={{
           display: "flex", alignItems: "center", gap: 4,
-          background: "none", border: "1.5px dashed transparent",
+          background: "none",
+          borderWidth: "1.5px", borderStyle: "dashed",
+          borderColor: hovered ? "var(--accent)" : "transparent",
           borderRadius: 6, padding: "3px 6px", cursor: "pointer",
           transition: "border-color 0.13s",
-          ...(hovered && { borderColor: "var(--accent)" }),
         }}
       >
         <span style={{ fontSize: 11, color: labelColor, fontWeight: isNone ? 700 : 400 }}>
@@ -304,6 +305,7 @@ export default function ProfilePage() {
       <div style={{ maxWidth: 640, margin: "0 auto" }}>
 
         {/* ── Profile Card ─────────────────────────────────── */}
+
         <Card style={{ marginBottom: 14 }}>
           <CardHeader icon="👤" title="Manage Profile" />
           <div style={{ padding: 20 }}>
@@ -400,9 +402,11 @@ export default function ProfilePage() {
             </div>
           </div>
         </Card>
+      </div>
 
-        {/* ── Portal Users Card (admin only) ───────────────── */}
-        {isAdmin && (
+      {/* ── Portal Users Card (admin only) ───────────────── */}
+      {isAdmin && (
+        <div style={{ marginTop: 14 }}>
           <Card>
             <CardHeader
               icon="👥"
@@ -422,12 +426,12 @@ export default function ProfilePage() {
               <table>
                 <thead>
                   <tr>
-                    <th>ชื่อ / อีเมล</th>
-                    <th>บทบาท</th>
-                    <th>หน้าที่เข้าถึงได้</th>
-                    <th>สถานะ</th>
-                    <th>เข้าใช้ล่าสุด</th>
-                    <th>Actions</th>
+                    <th style={{ width: "22%" }}>ชื่อ / อีเมล</th>
+                    <th style={{ width: "18%" }}>บทบาท</th>
+                    <th style={{ width: "16%" }}>หน้าที่เข้าถึงได้</th>
+                    <th style={{ width: "12%" }}>สถานะ</th>
+                    <th style={{ width: "16%" }}>เข้าใช้ล่าสุด</th>
+                    <th style={{ width: "16%" }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -521,7 +525,7 @@ export default function ProfilePage() {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => setDeleteTarget(u)}
-                                style={{ color: "var(--red)", borderColor: "var(--red)" }}
+                                style={{ color: "var(--red)", border: "1.5px solid var(--red)" }}
                               >
                                 ลบ
                               </Button>
@@ -535,10 +539,10 @@ export default function ProfilePage() {
               </table>
             )}
           </Card>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* ── Invite Modal ─────────────────────────────────────── */}
+      {/* ── Invite Modal ──────────────────────────────────────── */}
       <Modal
         open={inviteOpen}
         onClose={() => {
