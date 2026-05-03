@@ -209,6 +209,7 @@ export function UserChildModal({ open, onClose, child, onSaved, isReadOnly = fal
                   userId={child.parentId}
                   childId={child.id}
                   onRefresh={loadPackages}
+                  isReadOnly={isReadOnly}
                 />
                 {/* Admin log — child-specific */}
                 <div style={{ marginTop: 16 }}>

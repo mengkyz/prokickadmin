@@ -21,6 +21,7 @@ export interface PackageEditorSectionProps {
   userId: string;
   childId: string | null;
   onRefresh: () => Promise<void>;
+  isReadOnly?: boolean;
 }
 
 function todayStr() {
@@ -46,7 +47,7 @@ function statusVariant(s: PkgStatus | null): "green" | "orange" | "red" | "gray"
   return "gray";
 }
 
-export function PackageEditorSection({ packages, userId, childId, onRefresh }: PackageEditorSectionProps) {
+export function PackageEditorSection({ packages, userId, childId, onRefresh, isReadOnly = false }: PackageEditorSectionProps) {
   const { showToast } = useToast();
 
   // ── Existing editing state ────────────────────────────
@@ -231,19 +232,21 @@ export function PackageEditorSection({ packages, userId, childId, onRefresh }: P
   return (
     <div>
       {/* ── Header: Add Package button ── */}
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-        <Button
-          variant="ghost"
-          size="sm"
-          style={{ fontSize: 11, border: "1.5px solid var(--green)", color: "var(--green)" }}
-          onClick={() => setShowAddForm((v) => !v)}
-        >
-          {showAddForm ? "✕ ยกเลิก" : "+ เพิ่มแพ็กเกจ"}
-        </Button>
-      </div>
+      {!isReadOnly && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+          <Button
+            variant="ghost"
+            size="sm"
+            style={{ fontSize: 11, border: "1.5px solid var(--green)", color: "var(--green)" }}
+            onClick={() => setShowAddForm((v) => !v)}
+          >
+            {showAddForm ? "✕ ยกเลิก" : "+ เพิ่มแพ็กเกจ"}
+          </Button>
+        </div>
+      )}
 
       {/* ── Add Package inline form ── */}
-      {showAddForm && (
+      {!isReadOnly && showAddForm && (
         <div style={{ background: "var(--bg)", border: "1.5px solid var(--green)", borderRadius: 9, padding: 14, marginBottom: 12 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--green)", marginBottom: 10 }}>➕ เพิ่มแพ็กเกจให้ผู้ใช้</div>
           {loadingTemplates ? (
@@ -338,8 +341,8 @@ export function PackageEditorSection({ packages, userId, childId, onRefresh }: P
             <div style={{ fontSize: 13, fontWeight: 700 }}>{pkg.packageName}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" as const, justifyContent: "flex-end" }}>
               <Badge variant={statusVariant(pkgStatus)}>● {pkgStatus}</Badge>
-              {/* Active/Inactive toggle (not for expired) */}
-              {!isExpired && (
+              {/* Active/Inactive toggle (not for expired, not for read-only) */}
+              {!isExpired && !isReadOnly && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -355,49 +358,51 @@ export function PackageEditorSection({ packages, userId, childId, onRefresh }: P
                 </Button>
               )}
               {/* Delete button with inline confirm */}
-              {confirmDeleteId !== pkg.id ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  style={{
-                    fontSize: 10, padding: "3px 8px",
-                    border: deletableMap[pkg.id] === false
-                      ? "1.5px solid var(--bd2)"
-                      : "1.5px solid var(--red)",
-                    color: deletableMap[pkg.id] === false ? "var(--tm)" : "var(--red)",
-                    cursor: deletableMap[pkg.id] === false ? "not-allowed" : "pointer",
-                    opacity: deletableMap[pkg.id] === false ? 0.45 : 1,
-                  }}
-                  onClick={() => { if (deletableMap[pkg.id] !== false) setConfirmDeleteId(pkg.id); }}
-                  title={
-                    deletableMap[pkg.id] === false
-                      ? "ไม่สามารถลบได้: มีการชำระเงินหรือธุรกรรมที่เชื่อมกับแพ็กเกจนี้"
-                      : "ลบแพ็กเกจ"
-                  }
-                >
-                  🗑️
-                </Button>
-              ) : (
-                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                  <span style={{ fontSize: 10, color: "var(--red)", fontWeight: 600 }}>ยืนยันลบ?</span>
+              {!isReadOnly && (
+                confirmDeleteId !== pkg.id ? (
                   <Button
                     variant="ghost"
                     size="sm"
-                    style={{ fontSize: 10, padding: "3px 8px", background: "var(--red)", color: "#fff", border: "none" }}
-                    onClick={() => handleDeletePackage(pkg.id)}
-                    disabled={deleting}
+                    style={{
+                      fontSize: 10, padding: "3px 8px",
+                      border: deletableMap[pkg.id] === false
+                        ? "1.5px solid var(--bd2)"
+                        : "1.5px solid var(--red)",
+                      color: deletableMap[pkg.id] === false ? "var(--tm)" : "var(--red)",
+                      cursor: deletableMap[pkg.id] === false ? "not-allowed" : "pointer",
+                      opacity: deletableMap[pkg.id] === false ? 0.45 : 1,
+                    }}
+                    onClick={() => { if (deletableMap[pkg.id] !== false) setConfirmDeleteId(pkg.id); }}
+                    title={
+                      deletableMap[pkg.id] === false
+                        ? "ไม่สามารถลบได้: มีการชำระเงินหรือธุรกรรมที่เชื่อมกับแพ็กเกจนี้"
+                        : "ลบแพ็กเกจ"
+                    }
                   >
-                    {deleting ? "..." : "ลบ"}
+                    🗑️
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    style={{ fontSize: 10, padding: "3px 8px" }}
-                    onClick={() => setConfirmDeleteId(null)}
-                  >
-                    ยกเลิก
-                  </Button>
-                </div>
+                ) : (
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ fontSize: 10, color: "var(--red)", fontWeight: 600 }}>ยืนยันลบ?</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      style={{ fontSize: 10, padding: "3px 8px", background: "var(--red)", color: "#fff", border: "none" }}
+                      onClick={() => handleDeletePackage(pkg.id)}
+                      disabled={deleting}
+                    >
+                      {deleting ? "..." : "ลบ"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      style={{ fontSize: 10, padding: "3px 8px" }}
+                      onClick={() => setConfirmDeleteId(null)}
+                    >
+                      ยกเลิก
+                    </Button>
+                  </div>
+                )
               )}
             </div>
           </div>
@@ -425,7 +430,7 @@ export function PackageEditorSection({ packages, userId, childId, onRefresh }: P
           </div>
 
           {/* Adjust Expiry */}
-          <div style={{ background: "var(--bg)", border: "1.5px solid var(--bd)", borderRadius: 8, padding: 11, marginBottom: 9 }}>
+          {!isReadOnly && <div style={{ background: "var(--bg)", border: "1.5px solid var(--bd)", borderRadius: 8, padding: 11, marginBottom: 9 }}>
             <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase" as const, color: "var(--tm)", marginBottom: 8 }}>📅 ปรับวันหมดอายุ</div>
             <div style={{ display: "grid", gridTemplateColumns: "70px auto 1fr auto", gap: 7, alignItems: "end" }}>
               <div>
@@ -457,10 +462,10 @@ export function PackageEditorSection({ packages, userId, childId, onRefresh }: P
                 ℹ️ วันใหม่อยู่ในอนาคต — แพ็กเกจจะเปลี่ยนเป็น Active อัตโนมัติ
               </div>
             )}
-          </div>
+          </div>}
 
           {/* Adjust Sessions / Extra */}
-          <div style={{ background: "var(--bg)", border: "1.5px solid var(--bd)", borderRadius: 8, padding: 11 }}>
+          {!isReadOnly && <div style={{ background: "var(--bg)", border: "1.5px solid var(--bd)", borderRadius: 8, padding: 11 }}>
             <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase" as const, color: "var(--tm)", marginBottom: 8 }}>🔧 Adjust Sessions / Extra</div>
             <div style={{ display: "grid", gridTemplateColumns: "auto auto 1fr auto", gap: 7, alignItems: "end" }}>
               <div>
@@ -485,7 +490,7 @@ export function PackageEditorSection({ packages, userId, childId, onRefresh }: P
                 {savingAdj ? "..." : "บันทึก"}
               </Button>
             </div>
-          </div>
+          </div>}
         </div>
       )}
     </div>

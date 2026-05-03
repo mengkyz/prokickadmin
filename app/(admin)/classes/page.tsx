@@ -469,6 +469,7 @@ export default function ClassesPage() {
         onClose={() => { setModal("none"); setDetailTarget(null); }}
         cls={detailTarget}
         onBookingChanged={load}
+        isReadOnly={!isAdmin}
       />
 
       <HistoryDetailModal

@@ -220,6 +220,7 @@ export function UserParentModal({ open, onClose, user, onSaved, onOpenChild, isR
                   userId={user.id}
                   childId={null}
                   onRefresh={loadPackages}
+                  isReadOnly={isReadOnly}
                 />
 
                 {/* Admin log — parent-only (child_id IS NULL) */}

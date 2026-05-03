@@ -20,9 +20,10 @@ interface Props {
   onClose: () => void;
   cls: AdminClass | null;
   onBookingChanged?: () => void;
+  isReadOnly?: boolean;
 }
 
-export function IncomingDetailModal({ open, cls, onClose, onBookingChanged }: Props) {
+export function IncomingDetailModal({ open, cls, onClose, onBookingChanged, isReadOnly = false }: Props) {
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<"booked" | "waitlist" | "logs">("booked");
   const [bookings, setBookings] = useState<AdminBooking[]>([]);
@@ -164,13 +165,15 @@ export function IncomingDetailModal({ open, cls, onClose, onBookingChanged }: Pr
       footer={
         view === "list" ? (
           <>
-            <Button
-              size="sm"
-              style={{ background: "var(--accent)", color: "#fff", border: "none", marginRight: "auto" }}
-              onClick={openBookingView}
-            >
-              ➕ จองให้ผู้ใช้
-            </Button>
+            {!isReadOnly && (
+              <Button
+                size="sm"
+                style={{ background: "var(--accent)", color: "#fff", border: "none", marginRight: "auto" }}
+                onClick={openBookingView}
+              >
+                ➕ จองให้ผู้ใช้
+              </Button>
+            )}
             <Button variant="ghost" onClick={onClose}>ปิด</Button>
           </>
         ) : (
@@ -304,7 +307,7 @@ export function IncomingDetailModal({ open, cls, onClose, onBookingChanged }: Pr
                         )}
                       </td>
                       <td>
-                        {b.attendanceStatus === "confirmed" && (
+                        {!isReadOnly && b.attendanceStatus === "confirmed" && (
                           <Button
                             variant="danger" size="sm"
                             disabled={saving === b.id}
