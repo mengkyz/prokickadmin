@@ -38,6 +38,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/api") ||
     pathname.startsWith("/auth") ||
     pathname.startsWith("/set-password") ||
+    pathname.startsWith("/forgot-password") ||
     pathname.match(/\.(svg|png|jpg|jpeg|gif|webp|ico|css|js)$/)
   ) {
     return supabaseResponse;

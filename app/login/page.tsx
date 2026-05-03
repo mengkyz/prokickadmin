@@ -150,18 +150,29 @@ function LoginForm() {
             </div>
 
             <div style={{ marginBottom: 22 }}>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: "var(--t2)",
-                  marginBottom: 5,
-                  letterSpacing: ".3px",
-                }}
-              >
-                รหัสผ่าน
-              </label>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                <label
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "var(--t2)",
+                    letterSpacing: ".3px",
+                  }}
+                >
+                  รหัสผ่าน
+                </label>
+                <a
+                  href="/forgot-password"
+                  style={{
+                    fontSize: 11,
+                    color: "var(--accent)",
+                    textDecoration: "none",
+                    fontWeight: 600,
+                  }}
+                >
+                  ลืมรหัสผ่าน?
+                </a>
+              </div>
               <input
                 type="password"
                 value={password}
