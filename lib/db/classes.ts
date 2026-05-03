@@ -191,7 +191,24 @@ export async function fetchClasses(opts?: {
 
   const { data, error } = await query;
   if (error) throw new Error(error.message);
-  return (data as ClassRow[]).map((r) => rowToAdminClass(r));
+
+  const rows = data as ClassRow[];
+  if (rows.length === 0) return [];
+
+  const classIds = rows.map((r) => r.id);
+  const { data: wlData } = await getSupabaseClient()
+    .from("bookings")
+    .select("class_id")
+    .in("class_id", classIds)
+    .or("attendance_status.eq.waitlist,standby_order.not.is.null")
+    .neq("status", "cancelled");
+
+  const waitlistCounts: Record<string, number> = {};
+  for (const row of (wlData ?? []) as { class_id: string }[]) {
+    waitlistCounts[row.class_id] = (waitlistCounts[row.class_id] ?? 0) + 1;
+  }
+
+  return rows.map((r) => rowToAdminClass(r, waitlistCounts[r.id] ?? 0));
 }
 
 export async function fetchClassBookings(classId: string): Promise<AdminBooking[]> {

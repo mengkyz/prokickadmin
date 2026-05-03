@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/Badge";
 import { useToast } from "@/lib/context/ToastContext";
 import {
   fetchClassBookings,
-  promoteFromWaitlist,
   fetchEligibleUsers,
   adminBookClass,
   adminCancelBooking,
@@ -76,21 +75,6 @@ export function IncomingDetailModal({ open, cls, onClose, onBookingChanged }: Pr
       await adminCancelBooking(b.id, b.userId);
       if (cls) await logAdminAction(cls.id, "cancel", b.userName, "ยกเลิกโดยแอดมิน");
       showToast("ยกเลิกการจองแล้ว", "error");
-      onBookingChanged?.();
-      await load();
-    } catch (err) {
-      showToast((err as Error).message, "error");
-    } finally {
-      setSaving(null);
-    }
-  }
-
-  async function handlePromote(b: AdminBooking) {
-    setSaving(b.id);
-    try {
-      await promoteFromWaitlist(b.id);
-      if (cls) await logAdminAction(cls.id, "promote", b.userName, "เลื่อนขึ้นจากคิวโดยแอดมิน");
-      showToast("ยืนยันผู้เรียนจากคิวแล้ว");
       onBookingChanged?.();
       await load();
     } catch (err) {
@@ -320,21 +304,13 @@ export function IncomingDetailModal({ open, cls, onClose, onBookingChanged }: Pr
                         )}
                       </td>
                       <td>
-                        {b.attendanceStatus === "confirmed" ? (
+                        {b.attendanceStatus === "confirmed" && (
                           <Button
                             variant="danger" size="sm"
                             disabled={saving === b.id}
                             onClick={() => handleCancel(b)}
                           >
                             {saving === b.id ? "..." : "ยกเลิก"}
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="success" size="sm"
-                            disabled={saving === b.id}
-                            onClick={() => handlePromote(b)}
-                          >
-                            {saving === b.id ? "..." : "ยืนยันขึ้น"}
                           </Button>
                         )}
                       </td>
