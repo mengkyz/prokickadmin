@@ -17,9 +17,13 @@ const ALL_NAV_ITEMS = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { portalUser, isAdmin } = useAuth();
+  const { portalUser, isAdmin, allowedPages } = useAuth();
 
-  const navItems = ALL_NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin);
+  const navItems = ALL_NAV_ITEMS.filter((item) => {
+    if (item.adminOnly) return isAdmin;
+    const pageKey = item.href.replace("/", "");
+    return isAdmin || allowedPages.includes(pageKey);
+  });
 
   const displayName = portalUser?.display_name || portalUser?.email?.split("@")[0] || "User";
   const initial = displayName.charAt(0).toUpperCase();

@@ -9,6 +9,74 @@ import { useToast } from "@/lib/context/ToastContext";
 import { useAuth } from "@/lib/context/AuthContext";
 import { createClient } from "@/lib/supabase/client";
 import type { PortalUser } from "@/lib/types/auth";
+import { ALL_VIEWONLY_PAGES } from "@/lib/types/auth";
+
+function PageAccessCell({
+  user,
+  pageLabels,
+  onEdit,
+}: {
+  user: PortalUser;
+  pageLabels: Record<string, string>;
+  onEdit: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const pages = user.allowed_pages ?? [...ALL_VIEWONLY_PAGES];
+  const isAll = pages.length >= ALL_VIEWONLY_PAGES.length;
+  const isNone = pages.length === 0;
+  const label = isNone ? "ไม่มีสิทธิ์" : isAll ? "ทุกหน้า" : `${pages.length}/${ALL_VIEWONLY_PAGES.length} หน้า`;
+  const labelColor = isNone ? "var(--red)" : "var(--tm)";
+  const tooltipLines = isAll
+    ? ALL_VIEWONLY_PAGES.map((p) => pageLabels[p] ?? p)
+    : pages.map((p) => pageLabels[p] ?? p);
+
+  return (
+    <div style={{ position: "relative", display: "inline-block" }}>
+      <button
+        onClick={onEdit}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        title="คลิกเพื่อแก้ไขสิทธิ์หน้า"
+        style={{
+          display: "flex", alignItems: "center", gap: 4,
+          background: "none", border: "1.5px dashed transparent",
+          borderRadius: 6, padding: "3px 6px", cursor: "pointer",
+          transition: "border-color 0.13s",
+          ...(hovered && { borderColor: "var(--accent)" }),
+        }}
+      >
+        <span style={{ fontSize: 11, color: labelColor, fontWeight: isNone ? 700 : 400 }}>
+          {label}
+        </span>
+        <span style={{ fontSize: 10, color: "var(--tm)", opacity: hovered ? 1 : 0.4, transition: "opacity 0.13s" }}>✏️</span>
+      </button>
+
+      {hovered && (
+        <div style={{
+          position: "absolute", bottom: "calc(100% + 6px)", left: "50%",
+          transform: "translateX(-50%)", zIndex: 50,
+          background: "var(--sidebar-bg, #1a1a2e)", color: "#fff",
+          borderRadius: 8, padding: "8px 10px", fontSize: 11, lineHeight: 1.7,
+          whiteSpace: "nowrap", boxShadow: "0 4px 16px rgba(0,0,0,.25)",
+          pointerEvents: "none",
+        }}>
+          {isNone ? (
+            <span style={{ color: "#fca5a5" }}>ไม่มีหน้าที่เข้าถึงได้</span>
+          ) : (
+            tooltipLines.map((line) => <div key={line}>{line}</div>)
+          )}
+          {/* arrow */}
+          <div style={{
+            position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)",
+            width: 0, height: 0,
+            borderLeft: "5px solid transparent", borderRight: "5px solid transparent",
+            borderTop: "5px solid var(--sidebar-bg, #1a1a2e)",
+          }} />
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function ProfilePage() {
   const { portalUser, isAdmin, signOut } = useAuth();
@@ -36,6 +104,19 @@ export default function ProfilePage() {
   const [invitePassword, setInvitePassword] = useState("");
   const [inviteConfirmPassword, setInviteConfirmPassword] = useState("");
   const [inviting, setInviting] = useState(false);
+
+  // ── Manage pages (admin only) ─────────────────────────────
+  const [pagesTarget, setPagesTarget] = useState<PortalUser | null>(null);
+  const [selectedPages, setSelectedPages] = useState<string[]>([]);
+  const [savingPages, setSavingPages] = useState(false);
+
+  const PAGE_LABELS: Record<string, string> = {
+    dashboard: "📊 Dashboard",
+    classes:   "🗓️ Class & Sessions",
+    users:     "👥 Users",
+    packages:  "📦 Packages",
+    payments:  "💳 Payments",
+  };
 
   useEffect(() => {
     if (portalUser) {
@@ -188,6 +269,34 @@ export default function ProfilePage() {
     }
   }
 
+  function openPagesModal(user: PortalUser) {
+    setPagesTarget(user);
+    setSelectedPages(user.allowed_pages ?? [...ALL_VIEWONLY_PAGES]);
+  }
+
+  function togglePage(page: string) {
+    setSelectedPages((prev) =>
+      prev.includes(page) ? prev.filter((p) => p !== page) : [...prev, page]
+    );
+  }
+
+  async function handleSavePages() {
+    if (!pagesTarget) return;
+    setSavingPages(true);
+    const { error } = await supabase
+      .from("portal_users")
+      .update({ allowed_pages: selectedPages })
+      .eq("id", pagesTarget.id);
+    setSavingPages(false);
+    if (error) {
+      showToast("เกิดข้อผิดพลาด: " + error.message, "error");
+    } else {
+      showToast("บันทึกสิทธิ์หน้าแล้ว");
+      setPagesTarget(null);
+      loadPortalUsers();
+    }
+  }
+
   const initial = (displayName || portalUser?.email || "?").charAt(0).toUpperCase();
 
   return (
@@ -315,6 +424,7 @@ export default function ProfilePage() {
                   <tr>
                     <th>ชื่อ / อีเมล</th>
                     <th>บทบาท</th>
+                    <th>หน้าที่เข้าถึงได้</th>
                     <th>สถานะ</th>
                     <th>เข้าใช้ล่าสุด</th>
                     <th>Actions</th>
@@ -323,7 +433,7 @@ export default function ProfilePage() {
                 <tbody>
                   {portalUsers.length === 0 && (
                     <tr>
-                      <td colSpan={5} style={{ textAlign: "center", padding: 24, color: "var(--tm)", fontSize: 13 }}>
+                      <td colSpan={6} style={{ textAlign: "center", padding: 24, color: "var(--tm)", fontSize: 13 }}>
                         ยังไม่มีบัญชีผู้ใช้ระบบ
                       </td>
                     </tr>
@@ -378,6 +488,17 @@ export default function ProfilePage() {
                               <option value="admin">🔑 Admin</option>
                               <option value="view_only">👁 View only</option>
                             </select>
+                          )}
+                        </td>
+                        <td>
+                          {u.role === "view_only" && !isSelf ? (
+                            <PageAccessCell
+                              user={u}
+                              pageLabels={PAGE_LABELS}
+                              onEdit={() => openPagesModal(u)}
+                            />
+                          ) : (
+                            <span style={{ fontSize: 11, color: "var(--tm)", padding: "3px 6px" }}>ทุกหน้า</span>
                           )}
                         </td>
                         <td>
@@ -485,6 +606,80 @@ export default function ProfilePage() {
           🔑 บัญชีจะถูกสร้างทันที ผู้ใช้สามารถเข้าสู่ระบบด้วยอีเมลและรหัสผ่านที่ตั้งไว้ได้เลย
         </div>
       </Modal>
+      {/* ── Manage Pages modal ───────────────────────────────── */}
+      <Modal
+        open={pagesTarget !== null}
+        onClose={() => { if (!savingPages) setPagesTarget(null); }}
+        title="🗂️ จัดการหน้าที่เข้าถึงได้"
+        width={400}
+        footer={
+          <DefaultFooter
+            onCancel={() => setPagesTarget(null)}
+            onConfirm={handleSavePages}
+            confirmLabel={savingPages ? "กำลังบันทึก..." : "💾 บันทึก"}
+          />
+        }
+      >
+        {pagesTarget && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
+                background: "linear-gradient(135deg, var(--blue), var(--purple))",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 13, fontWeight: 700, color: "#fff",
+              }}>
+                {(pagesTarget.display_name || pagesTarget.email).charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>
+                  {pagesTarget.display_name || pagesTarget.email.split("@")[0]}
+                </div>
+                <div style={{ fontSize: 10, color: "var(--tm)" }}>{pagesTarget.email}</div>
+              </div>
+            </div>
+
+            <div style={{ fontSize: 11, color: "var(--tm)", padding: "8px 10px", background: "var(--bg)", borderRadius: 7, border: "1px solid var(--bd)" }}>
+              เลือกหน้าที่ผู้ใช้นี้สามารถเข้าถึงได้ หน้าที่ไม่ได้เลือกจะถูกซ่อนจาก sidebar
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {ALL_VIEWONLY_PAGES.map((page) => {
+                const checked = selectedPages.includes(page);
+                return (
+                  <label
+                    key={page}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10,
+                      padding: "9px 12px", borderRadius: 8, cursor: "pointer",
+                      border: `1.5px solid ${checked ? "var(--accent)" : "var(--bd)"}`,
+                      background: checked ? "rgba(255,149,0,.06)" : "var(--bg)",
+                      transition: "all 0.12s",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => togglePage(page)}
+                      style={{ width: 15, height: 15, cursor: "pointer", accentColor: "var(--accent)" }}
+                    />
+                    <span style={{ fontSize: 13, fontWeight: checked ? 600 : 400, color: checked ? "var(--t1)" : "var(--t2)" }}>
+                      {PAGE_LABELS[page]}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+
+            {selectedPages.length === 0 && (
+              <div style={{ fontSize: 11, color: "var(--red)", padding: "8px 10px", background: "rgba(239,68,68,.06)", borderRadius: 7, border: "1px solid rgba(239,68,68,.2)" }}>
+                ⚠️ ผู้ใช้นี้จะไม่มีสิทธิ์เข้าถึงหน้าใดเลย
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
       {/* ── Delete portal user confirmation modal ────────────── */}
       <Modal
         open={deleteTarget !== null}

@@ -3,11 +3,13 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { PortalUser } from "@/lib/types/auth";
+import { ALL_VIEWONLY_PAGES } from "@/lib/types/auth";
 
 interface AuthContextValue {
   portalUser: PortalUser | null;
   isAdmin: boolean;
   isCoach: boolean;
+  allowedPages: string[];
   loading: boolean;
   signOut: () => Promise<void>;
 }
@@ -16,6 +18,7 @@ const AuthContext = createContext<AuthContextValue>({
   portalUser: null,
   isAdmin: false,
   isCoach: false,
+  allowedPages: [...ALL_VIEWONLY_PAGES],
   loading: true,
   signOut: async () => {},
 });
@@ -64,12 +67,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.location.href = "/login";
   }
 
+  const isAdmin = portalUser?.role === "admin";
+  const allowedPages = isAdmin
+    ? [...ALL_VIEWONLY_PAGES]
+    : (portalUser?.allowed_pages ?? [...ALL_VIEWONLY_PAGES]);
+
   return (
     <AuthContext.Provider
       value={{
         portalUser,
-        isAdmin: portalUser?.role === "admin",
+        isAdmin,
         isCoach: portalUser?.role === "view_only",
+        allowedPages,
         loading,
         signOut,
       }}
