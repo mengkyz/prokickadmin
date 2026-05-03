@@ -118,7 +118,7 @@ export function Topbar() {
             <div style={{ lineHeight: 1.3 }}>
               <div style={{ fontSize: 12, fontWeight: 700 }}>{displayName}</div>
               <div style={{ fontSize: 9, color: "var(--tm)" }}>
-                {isAdmin ? "Admin" : "Coach"}
+                {isAdmin ? "Admin" : "View only"}
               </div>
             </div>
             <span style={{ fontSize: 9, color: "var(--tm)" }}>▾</span>
@@ -152,7 +152,7 @@ export function Topbar() {
                 </div>
                 <div style={{ marginTop: 6 }}>
                   <Badge variant={isAdmin ? "orange" : "blue"}>
-                    {isAdmin ? "🔑 Admin" : "👁 Coach"}
+                    {isAdmin ? "🔑 Admin" : "👁 View only"}
                   </Badge>
                 </div>
               </div>

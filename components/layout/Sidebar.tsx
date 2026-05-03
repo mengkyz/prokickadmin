@@ -170,7 +170,7 @@ export function Sidebar() {
               {displayName}
             </div>
             <div style={{ fontSize: 10, color: "rgba(255,255,255,.35)" }}>
-              {isAdmin ? "Admin" : "Coach"}
+              {isAdmin ? "Admin" : "View only"}
             </div>
           </div>
         </Link>
