@@ -17,8 +17,16 @@ export default function SetPasswordPage() {
   useEffect(() => {
     const supabase = createClient();
 
-    // PKCE flow: Supabase appends ?token_hash=xxx&type=recovery to the redirectTo URL
     const searchParams = new URLSearchParams(window.location.search);
+
+    // Supabase redirects here with ?error=... when the token is already expired/consumed
+    if (searchParams.get("error") || searchParams.get("error_code")) {
+      window.history.replaceState({}, "", "/set-password");
+      setStage("error");
+      return;
+    }
+
+    // PKCE flow: Supabase appends ?token_hash=xxx&type=recovery to the redirectTo URL
     const token_hash = searchParams.get("token_hash");
     const type = searchParams.get("type");
 
