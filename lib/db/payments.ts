@@ -188,14 +188,12 @@ function rawData(row: PaymentRow): any {
 function rowToAdminPayment(row: PaymentRow): AdminPayment {
   const rd = rawData(row);
 
-  // Prefer dedicated columns (post-migration); fall back to raw_response/api_response data.
-  // slipok_success defaults to false in DB for old records that pre-date the migration,
-  // so we can't use ?? (which only catches null/undefined). Use explicit true check instead:
-  // if slipok_success is explicitly true → confirmed; otherwise fall back to legacy `success`
-  // column or api_response.data.success.
-  const slipokSuccess  = row.slipok_success === true
-    ? true
-    : (row.success === true || rd.success === true);
+  // slipok_success is the authoritative verification result (post-migration).
+  // For legacy records it defaults to false in DB, so we fall back to the top-level
+  // `success` column only. We intentionally do NOT fall back to api_response.data.success
+  // because that field only indicates whether SlipOK could *read* the slip — it is true
+  // even when the verification fails (e.g. error_code 1014: receiver account mismatch).
+  const slipokSuccess  = row.slipok_success === true || row.success === true;
   const slipokMessage  = row.slipok_message  ?? rd.message  ?? null;
   const transRef       = row.trans_ref       ?? rd.transRef  ?? null;
   const transDate      = row.trans_date      ?? rd.transDate ?? null;
